@@ -213,11 +213,21 @@ func (m *mockAPI) handler() http.Handler {
 // in-process MCP client. It returns the client session for driving tool calls.
 func newSession(t *testing.T) *mcp.ClientSession {
 	t.Helper()
+	return connectSession(t, newMockAPI().handler())
+}
 
-	// Fast polling so the deploy/delete waiters converge instantly.
+// connectSession is the reusable test harness every tool-family test uses: it
+// stands up the given handler as the mock IaaS API, registers ALL tool
+// families (RegisterAll) on a fresh MCP server whose TokenSource points at that
+// mock, and connects an in-process MCP client. Family tests pass their own mux
+// so each family exercises only the endpoints it needs.
+func connectSession(t *testing.T, handler http.Handler) *mcp.ClientSession {
+	t.Helper()
+
+	// Fast polling so any create/delete waiters converge instantly.
 	t.Setenv("IAAS_MCP_POLL_INTERVAL", "1ms")
 
-	mock := httptest.NewServer(newMockAPI().handler())
+	mock := httptest.NewServer(handler)
 	t.Cleanup(mock.Close)
 
 	deps := tools.Deps{
@@ -227,7 +237,7 @@ func newSession(t *testing.T) *mcp.ClientSession {
 	}
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "iaas-mcp-server", Version: "test"}, nil)
-	tools.RegisterGolden(server, deps)
+	tools.RegisterAll(server, deps)
 
 	ctx := context.Background()
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()

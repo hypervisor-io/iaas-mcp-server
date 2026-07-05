@@ -144,6 +144,35 @@ func MapError(err error) error {
 	}
 }
 
+// OKResult is the structured output for action tools that mutate state but
+// return no object (attach/detach, add/remove a child, enable/disable, resize,
+// restart). OK is always true on success; a failure comes back as an error
+// result instead.
+type OKResult struct {
+	OK      bool   `json:"ok"`
+	Message string `json:"message,omitempty"`
+}
+
+// okResult is the conventional success value for a void action.
+func okResult(msg string) OKResult { return OKResult{OK: true, Message: msg} }
+
+// asObjectList coerces an envelope array value (decoded as []any of
+// map[string]any) into []map[string]any, dropping any non-object elements. It
+// never panics on an absent or mistyped value; it returns an empty slice.
+func asObjectList(v any) []map[string]any {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(arr))
+	for _, e := range arr {
+		if m, ok := e.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // ── confirm gate ────────────────────────────────────────────────────────────
 
 // confirmer is implemented by any input that gates a destructive operation.
