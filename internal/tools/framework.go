@@ -51,6 +51,11 @@ type Spec struct {
 	// Destructive marks delete/destroy tools. When true, the framework refuses
 	// the call unless the input carries confirm:true (see confirmer / Confirm).
 	Destructive bool
+	// Admin marks tools that call the admin API (prefix /v1). It does NOT change
+	// auth (the same Bearer pass-through seam is used; the admin API authorizes
+	// server-side), it only enriches a 401/403 into an admin-scope hint so the
+	// caller knows to present an admin-scoped, IP-registered token.
+	Admin bool
 }
 
 // Handler is a tool's business function: given the per-request client and the
@@ -107,10 +112,30 @@ func wrap[In, Out any](deps Deps, spec Spec, fn Handler[In, Out]) mcp.ToolHandle
 
 		out, err := fn(ctx, cl, in)
 		if err != nil {
-			return nil, zero, MapError(err)
+			return nil, zero, mapToolError(spec, err)
 		}
 		return nil, out, nil
 	}
+}
+
+// mapToolError applies MapError, then for an admin tool that got a 401/403
+// replaces the generic access-denied wording with an admin-scope hint: the
+// admin API needs an admin-scoped token that is registered from the calling IP
+// (admin tokens are IP-locked) and enabled.
+func mapToolError(spec Spec, err error) error {
+	mapped := MapError(err)
+	if !spec.Admin {
+		return mapped
+	}
+	var apiErr *client.APIError
+	if errors.As(mapped, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403) {
+		return fmt.Errorf(
+			"admin authorization failed: this tool calls the admin API and needs an admin-scoped token "+
+				"that is enabled and registered from this IP (admin tokens are IP-locked): %w",
+			apiErr,
+		)
+	}
+	return mapped
 }
 
 // MapError converts a client *APIError into a tool-facing error carrying the
