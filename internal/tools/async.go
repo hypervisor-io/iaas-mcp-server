@@ -98,6 +98,26 @@ func waitForGone(ctx context.Context, get func() (map[string]any, error), timeou
 	})
 }
 
+// waitForDockerEnabled polls DockerEnabled until it reports true, the
+// convergence signal for the async Docker-engine install. Mirrors the docker
+// deployment resource's install wait.
+func waitForDockerEnabled(ctx context.Context, cl *client.Client, instanceID string, timeout time.Duration) error {
+	return waiter.WaitFor(ctx, waiter.Options{
+		Interval: pollInterval(),
+		Timeout:  timeout,
+		Refresh: func() (string, bool, error) {
+			enabled, err := cl.DockerEnabled(ctx, instanceID)
+			if err != nil {
+				return "", false, err
+			}
+			if enabled {
+				return "installed", true, nil
+			}
+			return "installing", false, nil
+		},
+	})
+}
+
 // waitForInstanceGone polls SHOW until it 404s, the convergence signal for an
 // async delete. Mirrors iaas_instance's Delete waiter: an IsNotFound error is
 // "done"; any other error is terminal.
