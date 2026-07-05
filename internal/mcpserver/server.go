@@ -10,6 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hypervisor-io/iaas-mcp-server/internal/iaasauth"
+	"github.com/hypervisor-io/iaas-mcp-server/internal/tools"
 )
 
 const (
@@ -41,7 +42,14 @@ type Options struct {
 // New builds the top-level http.Handler for the process: the MCP
 // Streamable-HTTP endpoint (behind bearer-token auth) plus /healthz.
 func New(opts Options) http.Handler {
-	getServer := newGetServer(opts)
+	// Build ONE server with tools registered once, and hand it to every
+	// request. The SDK explicitly allows getServer to return the same server
+	// repeatedly; tools carry no per-request state (the caller's token flows
+	// through the request context, not the server), so a single shared server
+	// is correct for the stateless transport and avoids re-reflecting tool
+	// schemas on every request.
+	server := newServer(opts)
+	getServer := func(*http.Request) *mcp.Server { return server }
 
 	mcpHandler := mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
 		// Stateless: no session store. Any request can be handled by any
@@ -68,24 +76,19 @@ func New(opts Options) http.Handler {
 	return mux
 }
 
-// newGetServer returns the per-request server constructor the Streamable-HTTP
-// handler calls to obtain an *mcp.Server. In stateless mode this runs once
-// per incoming HTTP request.
-func newGetServer(opts Options) func(*http.Request) *mcp.Server {
-	return func(_ *http.Request) *mcp.Server {
-		server := mcp.NewServer(&mcp.Implementation{
-			Name:    Name,
-			Version: opts.Version,
-		}, nil)
+// newServer constructs the MCP server and registers the golden tools. Each
+// tool obtains its per-request *client.Client from opts.TokenSource(ctx), so
+// the shared server safely serves concurrent tenants: the token is on the
+// request context, never on the server.
+func newServer(opts Options) *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    Name,
+		Version: opts.Version,
+	}, nil)
 
-		// Phase 1 (docs/plans/2026-07-06-mcp-server-build.md): scaffold only,
-		// zero tools registered. Phase 2 adds mcp.AddTool calls here; each
-		// handler calls opts.TokenSource(ctx) to obtain the *client.Client for
-		// the caller that made that specific request.
-		_ = opts.TokenSource
+	tools.RegisterGolden(server, tools.Deps{TokenSource: opts.TokenSource})
 
-		return server
-	}
+	return server
 }
 
 // healthzHandler is a minimal liveness probe: 200 if the process is up and
