@@ -59,6 +59,45 @@ func waitForInstanceDeploy(ctx context.Context, cl *client.Client, instanceID, t
 	})
 }
 
+// waitForStatus is the generic create/converge waiter: it polls get on the
+// configured interval until the object's status field reaches a ready state
+// (done) or a fail state (terminal error), reusing the provider's
+// StatePollerWithErrorTolerance (tolerance 3) so a brief transport blip during
+// a long provisioning does not abort the wait. Families pass the same field /
+// ready / fail sets their provider resource uses.
+func waitForStatus(
+	ctx context.Context,
+	get func() (map[string]any, error),
+	field string,
+	ready, fail []string,
+	timeout time.Duration,
+) error {
+	return waiter.WaitFor(ctx, waiter.Options{
+		Interval: pollInterval(),
+		Timeout:  timeout,
+		Refresh:  waiter.StatePollerWithErrorTolerance(get, field, ready, fail, 3),
+	})
+}
+
+// waitForGone polls get until it returns an IsNotFound error, the convergence
+// signal for an async delete (poll SHOW to 404). Any other error is terminal.
+func waitForGone(ctx context.Context, get func() (map[string]any, error), timeout time.Duration) error {
+	return waiter.WaitFor(ctx, waiter.Options{
+		Interval: pollInterval(),
+		Timeout:  timeout,
+		Refresh: func() (string, bool, error) {
+			_, err := get()
+			if err != nil {
+				if client.IsNotFound(err) {
+					return "deleted", true, nil
+				}
+				return "", false, err
+			}
+			return "deleting", false, nil
+		},
+	})
+}
+
 // waitForInstanceGone polls SHOW until it 404s, the convergence signal for an
 // async delete. Mirrors iaas_instance's Delete waiter: an IsNotFound error is
 // "done"; any other error is terminal.
