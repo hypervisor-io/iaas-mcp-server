@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build:
+    name: Build, Vet, Format, Test
+    runs-on: ubuntu-latest
+
+    steps:
+      # This repo's go.mod has:
+      #   replace github.com/hypervisor-io/terraform-provider-iaas => ../terraform-provider-iaas
+      # (see docs/plans/2026-07-06-mcp-server-build.md Phase 1 and Phase 0 in
+      # specs/17-opentofu-mcp-api-trisync.md: client/waiter are promoted,
+      # importable packages in that repo, not yet a separately tagged module).
+      # CI therefore checks out both repos as siblings so the relative
+      # replace path resolves exactly as it does on a dev machine.
+      #
+      # terraform-provider-iaas is a private repo in the same org, so this
+      # step needs a token with read access to it. GITHUB_TOKEN cannot read a
+      # second private repo by itself; set a PAT/deploy-key secret named
+      # IAAS_ORG_RO_TOKEN (repo scope on hypervisor-io/terraform-provider-iaas)
+      # in this repo's Actions secrets. Once Phase 0's client/waiter packages
+      # are promoted to their own tagged module (spec 17 Phase 0, option a),
+      # this cross-checkout goes away in favor of a normal pinned `require`.
+      - name: Checkout iaas-mcp-server
+        uses: actions/checkout@v4
+        with:
+          path: iaas-mcp-server
+
+      - name: Checkout terraform-provider-iaas (sibling, for the replace directive)
+        uses: actions/checkout@v4
+        with:
+          repository: hypervisor-io/terraform-provider-iaas
+          path: terraform-provider-iaas
+          token: ${{ secrets.IAAS_ORG_RO_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: iaas-mcp-server/go.mod
+
+      - name: go mod tidy is clean
+        working-directory: iaas-mcp-server
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Build
+        working-directory: iaas-mcp-server
+        run: go build ./...
+
+      - name: Vet
+        working-directory: iaas-mcp-server
+        run: go vet ./...
+
+      - name: Check formatting
+        working-directory: iaas-mcp-server
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test
+        working-directory: iaas-mcp-server
+        run: go test ./...
