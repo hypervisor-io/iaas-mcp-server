@@ -26,6 +26,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -69,10 +70,44 @@ type Handler[In, Out any] func(ctx context.Context, cl *client.Client, in In) (O
 // input/output JSON schema from the In/Out types and validates incoming
 // arguments before the handler runs.
 func Register[In, Out any](s *mcp.Server, deps Deps, spec Spec, fn Handler[In, Out]) {
+	// AddTool panics on a schema error, so a name is only recorded once the tool
+	// is actually, successfully registered.
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        spec.Name,
 		Description: spec.Description,
 	}, wrap(deps, spec, fn))
+	recordToolName(spec.Name)
+}
+
+// toolNameRecorder is a test-only hook. The MCP Go SDK exposes no public way to
+// enumerate a server's registered tools without a live client session, so
+// RegisteredToolNames captures each name at registration through this hook. It
+// is nil in normal operation (production RegisterAll records nothing).
+var (
+	recorderMu       sync.Mutex
+	toolNameRecorder func(string)
+)
+
+func recordToolName(name string) {
+	if toolNameRecorder != nil {
+		toolNameRecorder(name)
+	}
+}
+
+// RegisteredToolNames returns the name of every tool RegisterAll registers. It
+// registers all families onto a throwaway server (registration does not require
+// a live token, so a zero-value Deps is fine) and captures each name via the
+// recorder hook. Intended for the tri-sync coverage gate.
+func RegisteredToolNames() []string {
+	recorderMu.Lock()
+	defer recorderMu.Unlock()
+
+	var names []string
+	toolNameRecorder = func(n string) { names = append(names, n) }
+	defer func() { toolNameRecorder = nil }()
+
+	RegisterAll(mcp.NewServer(&mcp.Implementation{Name: "trisync-enum", Version: "test"}, nil), Deps{})
+	return names
 }
 
 // wrap turns a Handler into an mcp.ToolHandlerFor, layering (in order) the
