@@ -86,7 +86,7 @@ func newServer(opts Options) *mcp.Server {
 		Version: opts.Version,
 	}, nil)
 
-	tools.RegisterGolden(server, tools.Deps{TokenSource: opts.TokenSource})
+	tools.RegisterAll(server, tools.Deps{TokenSource: opts.TokenSource})
 
 	return server
 }
