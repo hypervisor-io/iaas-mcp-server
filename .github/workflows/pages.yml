@@ -1,0 +1,47 @@
+name: Deploy iaas-mcp-server docs site to GitHub Pages
+
+# Publishes the self-contained docs page in site/ to GitHub Pages.
+# One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
+# The repo must be public (or on a plan allowing private Pages) to serve.
+# Re-run: push a change under site/ or this file, or use the Actions tab.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          # Enable Pages (Actions source) automatically on first run, so no
+          # manual Settings -> Pages toggle is needed. Falls back to the manual
+          # step if org policy blocks token-driven enablement.
+          enablement: true
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

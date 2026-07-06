@@ -1,0 +1,1235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iaas MCP server - Model Context Protocol for the IaaS platform</title>
+<meta name="description" content="A remote, stateless Streamable-HTTP MCP server that exposes the Hypervisor.io IaaS platform to AI agents: 285 tools (223 user + 62 curated admin) over the platform REST API, backed by the same tested client as the OpenTofu provider.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23111535'/%3E%3Ctext x='32' y='42' font-family='monospace' font-size='30' font-weight='700' fill='%23818cf8' text-anchor='middle'%3E&gt;_%3C/text%3E%3C/svg%3E">
+<style>
+/* ============================================================
+   0. RESET + THEME TOKENS
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; }
+img, svg { display: block; max-width: 100%; }
+
+:root{
+  --bg:        #111535;
+  --bg-1:      #161a40;
+  --bg-2:      #1a1f4a;
+  --bg-code:   #0c0f28;
+  --ink:       #e2e8f0;
+  --ink-dim:   #94a3b8;
+  --ink-faint: #64748b;
+  --rule:      rgba(129,140,248,0.15);
+  --rule-strong: rgba(129,140,248,0.28);
+  --amber:     #818cf8;
+  --amber-dim: #4f46e5;
+  --amber-bg:  rgba(129,140,248,0.10);
+  --cyan:      #a78bfa;
+  --cyan-dim:  #7c3aed;
+  --cyan-bg:   rgba(167,139,250,0.08);
+  --danger:    #ff6b57;
+  --danger-bg: rgba(255,107,87,0.10);
+  --ok:        #7ee787;
+  --shadow:    0 24px 70px rgba(0,0,0,0.55);
+  --radius:    4px;
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", Georgia, ui-serif, serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:        #f6f7fb;
+    --bg-1:      #ffffff;
+    --bg-2:      #eef0f8;
+    --bg-code:   #0c0f28;
+    --ink:       #1e1b4b;
+    --ink-dim:   #475569;
+    --ink-faint: #64748b;
+    --rule:      rgba(79,70,229,0.15);
+    --rule-strong: rgba(79,70,229,0.28);
+    --amber:     #4f46e5;
+    --amber-dim: #4338ca;
+    --amber-bg:  rgba(79,70,229,0.08);
+    --cyan:      #7c3aed;
+    --cyan-dim:  #6d28d9;
+    --cyan-bg:   rgba(124,58,237,0.08);
+    --danger:    #a23324;
+    --danger-bg: rgba(162,51,36,0.08);
+    --ok:        #2f7d3d;
+    --shadow:    0 20px 45px rgba(30,27,75,0.14);
+    color-scheme: light;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:        #111535;
+  --bg-1:      #161a40;
+  --bg-2:      #1a1f4a;
+  --bg-code:   #0c0f28;
+  --ink:       #e2e8f0;
+  --ink-dim:   #94a3b8;
+  --ink-faint: #64748b;
+  --rule:      rgba(129,140,248,0.15);
+  --rule-strong: rgba(129,140,248,0.28);
+  --amber:     #818cf8;
+  --amber-dim: #4f46e5;
+  --amber-bg:  rgba(129,140,248,0.10);
+  --cyan:      #a78bfa;
+  --cyan-dim:  #7c3aed;
+  --cyan-bg:   rgba(167,139,250,0.08);
+  --danger:    #ff6b57;
+  --danger-bg: rgba(255,107,87,0.10);
+  --ok:        #7ee787;
+  --shadow:    0 24px 70px rgba(0,0,0,0.55);
+  color-scheme: dark;
+}
+:root[data-theme="light"]{
+  --bg:        #f6f7fb;
+  --bg-1:      #ffffff;
+  --bg-2:      #eef0f8;
+  --bg-code:   #0c0f28;
+  --ink:       #1e1b4b;
+  --ink-dim:   #475569;
+  --ink-faint: #64748b;
+  --rule:      rgba(79,70,229,0.15);
+  --rule-strong: rgba(79,70,229,0.28);
+  --amber:     #4f46e5;
+  --amber-dim: #4338ca;
+  --amber-bg:  rgba(79,70,229,0.08);
+  --cyan:      #7c3aed;
+  --cyan-dim:  #6d28d9;
+  --cyan-bg:   rgba(124,58,237,0.08);
+  --danger:    #a23324;
+  --danger-bg: rgba(162,51,36,0.08);
+  --ok:        #2f7d3d;
+  --shadow:    0 20px 45px rgba(30,27,75,0.14);
+  color-scheme: light;
+}
+
+/* ============================================================
+   1. BASE
+   ============================================================ */
+body{
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+h1,h2,h3,h4{ font-family: var(--font-serif); font-weight: 600; color: var(--ink); margin: 0 0 .5em; letter-spacing: -0.01em; }
+p{ margin: 0 0 1em; color: var(--ink); }
+a{ color: var(--cyan); text-decoration: none; border-bottom: 1px solid var(--cyan-dim); }
+a:hover{ color: var(--amber); border-color: var(--amber-dim); }
+code, kbd, pre{ font-family: var(--font-mono); }
+.mono{ font-family: var(--font-mono); }
+.wrap{ max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+section{ position: relative; padding: 92px 0; border-bottom: 1px solid var(--rule); }
+.eyebrow{
+  font-family: var(--font-mono); font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--amber); display: flex; align-items: center; gap: .6em; margin-bottom: 18px;
+}
+.eyebrow::before{ content: ""; width: 22px; height: 1px; background: var(--amber); display: inline-block; }
+h2.section-title{ font-size: clamp(28px, 3.6vw, 42px); max-width: 720px; }
+.lede{ font-size: 19px; color: var(--ink-dim); max-width: 640px; }
+
+/* scroll offset so sticky header doesn't cover anchors */
+section[id]{ scroll-margin-top: 76px; }
+
+/* ============================================================
+   2. TOPBAR
+   ============================================================ */
+.topbar{
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(10px) saturate(1.1);
+  border-bottom: 1px solid var(--rule);
+}
+.topbar-inner{
+  max-width: 1180px; margin: 0 auto; padding: 0 28px; height: 60px;
+  display: flex; align-items: center; gap: 28px;
+}
+.brand{ font-family: var(--font-mono); font-weight: 700; font-size: 16px; color: var(--ink); display:flex; align-items:center; gap: 2px; border: none; }
+.brand .dim{ color: var(--ink-faint); }
+.brand .cursor{ display:inline-block; width: 8px; height: 16px; background: var(--amber); margin-left: 4px; animation: blink 1.1s steps(1) infinite; }
+@keyframes blink{ 50%{ opacity: 0; } }
+.topnav{ display:flex; gap: 22px; flex: 1; font-family: var(--font-mono); font-size: 13.5px; }
+.topnav a{ color: var(--ink-dim); border: none; white-space: nowrap; }
+.topnav a:hover{ color: var(--amber); }
+.top-actions{ display:flex; align-items:center; gap: 10px; margin-left: auto; }
+.icon-btn{
+  font-family: var(--font-mono); font-size: 14px; width: 34px; height: 34px; border-radius: var(--radius);
+  border: 1px solid var(--rule-strong); background: var(--bg-1); color: var(--ink); cursor: pointer;
+  display:flex; align-items:center; justify-content:center; transition: border-color .15s, color .15s;
+}
+.icon-btn:hover{ border-color: var(--amber); color: var(--amber); }
+
+/* ============================================================
+   3. HERO
+   ============================================================ */
+.hero{ padding-top: 132px; overflow: hidden; }
+.hero-grid-bg{
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    repeating-linear-gradient(0deg,  var(--rule) 0 1px, transparent 1px 88px),
+    repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 88px);
+  mask-image: radial-gradient(ellipse 70% 60% at 65% 20%, black 10%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 65% 20%, black 10%, transparent 75%);
+}
+.hero-dot{ position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 14px 3px var(--amber); animation: pulse 2.6s ease-in-out infinite; }
+.hero-dot.c2{ background: var(--cyan); box-shadow: 0 0 14px 3px var(--cyan); animation-delay: .9s; }
+.hero-dot.c3{ animation-delay: 1.7s; }
+@keyframes pulse{ 0%,100%{ opacity: .25; transform: scale(.8);} 50%{ opacity: 1; transform: scale(1.15);} }
+.hero-inner{ position: relative; z-index: 1; display: grid; grid-template-columns: 1.1fr 1fr; gap: 56px; align-items: center; }
+.hero h1{ font-size: clamp(36px, 5vw, 58px); line-height: 1.05; margin-bottom: 22px; }
+.hero h1 em{ font-style: italic; color: var(--amber); }
+.hero-lede{ font-size: 19px; color: var(--ink-dim); max-width: 520px; margin-bottom: 30px; }
+.hero-cta{ display:flex; gap: 14px; flex-wrap: wrap; margin-bottom: 46px; }
+.btn{
+  font-family: var(--font-mono); font-size: 13.5px; letter-spacing: .04em; text-transform: uppercase;
+  padding: 13px 20px; border-radius: var(--radius); border: 1px solid var(--rule-strong); cursor: pointer;
+  display:inline-flex; align-items:center; gap:.5em; border-bottom-width: 1px;
+}
+.btn-primary{ background: var(--amber); color: #0c0f28; border-color: var(--amber); font-weight: 700; }
+.btn-primary:hover{ background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.btn-ghost{ background: transparent; color: var(--ink); }
+.btn-ghost:hover{ border-color: var(--cyan); color: var(--cyan); }
+.stat-row{ display:flex; gap: 40px; flex-wrap: wrap; }
+.stat b{ display:block; font-family: var(--font-mono); font-size: 30px; color: var(--ink); font-weight: 700; }
+.stat span{ font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); }
+
+/* terminal window */
+.term{
+  background: var(--bg-code); border: 1px solid var(--rule-strong); border-radius: 8px; box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.term-bar{ display:flex; align-items:center; gap: 8px; padding: 10px 14px; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--rule); }
+.term-dot{ width: 9px; height: 9px; border-radius: 50%; background: var(--ink-faint); }
+.term-dot:nth-child(1){ background: #ff6b57; }
+.term-dot:nth-child(2){ background: #818cf8; }
+.term-dot:nth-child(3){ background: #7ee787; }
+.term-title{ margin-left: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
+.term pre{ margin: 0; padding: 20px 18px; font-size: 13.2px; line-height: 1.7; overflow-x: auto; color: #d2d8e0; }
+.tok-com{ color: #6b7d79; }
+.tok-key{ color: #a78bfa; }
+.tok-str{ color: #818cf8; }
+.tok-add{ color: #7ee787; }
+.tok-flag{ color: #d9a5ff; }
+
+/* ============================================================
+   4. CODE BLOCKS + COPY
+   ============================================================ */
+.code-wrap{ position: relative; background: var(--bg-code); border: 1px solid var(--rule-strong); border-radius: var(--radius); margin: 16px 0; }
+.code-wrap pre{ margin: 0; padding: 18px; overflow-x: auto; font-size: 13.3px; line-height: 1.65; color: #d2d8e0; }
+.copy{
+  position: absolute; top: 8px; right: 8px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em;
+  text-transform: uppercase; background: rgba(255,255,255,0.06); color: var(--ink-dim); border: 1px solid var(--rule-strong);
+  border-radius: var(--radius); padding: 5px 9px; cursor: pointer;
+}
+.copy:hover{ color: var(--amber); border-color: var(--amber-dim); }
+.copy.copied{ color: var(--ok); border-color: var(--ok); }
+
+/* ============================================================
+   5. CALLOUTS
+   ============================================================ */
+.callout{ border: 1px solid var(--rule-strong); border-left: 4px solid var(--ink-faint); border-radius: var(--radius); padding: 22px 24px; margin: 26px 0; background: var(--bg-1); }
+.callout h4{ font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .06em; font-size: 14px; margin-bottom: 10px; }
+.callout p:last-child{ margin-bottom: 0; }
+.callout-danger{ border-left-color: var(--danger); background: var(--danger-bg); }
+.callout-danger h4{ color: var(--danger); }
+.callout-info{ border-left-color: var(--cyan); background: var(--cyan-bg); }
+.callout-info h4{ color: var(--cyan); }
+.callout ul{ margin: 10px 0 0; padding-left: 20px; }
+.callout li{ margin-bottom: 6px; }
+
+/* ============================================================
+   6. GETTING STARTED STEPS
+   ============================================================ */
+.steps{ counter-reset: step; margin-top: 40px; display: grid; gap: 36px; }
+.step{ display:grid; grid-template-columns: 56px 1fr; gap: 22px; }
+.step-num{ counter-increment: step; font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--amber); }
+.step-num::before{ content: counter(step, decimal-leading-zero); }
+.step h3{ font-size: 21px; margin-bottom: 6px; }
+.step p{ color: var(--ink-dim); }
+
+/* ============================================================
+   7. USERS VS ADMINS CARDS
+   ============================================================ */
+.role-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 36px; }
+.role-card{ border: 1px solid var(--rule-strong); border-radius: var(--radius); padding: 26px; background: var(--bg-1); }
+.role-card h3{ font-family: var(--font-mono); font-size: 16px; text-transform: uppercase; letter-spacing: .04em; display:flex; align-items:center; gap:10px; }
+.role-tag{ font-family: var(--font-mono); font-size: 10.5px; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--cyan-dim); color: var(--cyan); text-transform: uppercase; }
+.role-tag.admin{ border-color: var(--amber-dim); color: var(--amber); }
+.role-card p{ color: var(--ink-dim); font-size: 15.5px; }
+.table-wrap{ overflow-x: auto; margin: 24px 0; }
+table{ border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14.5px; }
+th, td{ text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th{ font-family: var(--font-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); font-weight: 600; }
+td code{ font-size: 13px; color: var(--cyan); }
+
+/* ============================================================
+   8. CATALOG
+   ============================================================ */
+.catalog-controls{ display:flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 34px 0 10px; position: sticky; top: 61px; z-index: 20; background: var(--bg); padding: 14px 0; border-bottom: 1px solid var(--rule); }
+#catalog-search{
+  font-family: var(--font-mono); font-size: 14px; background: var(--bg-1); border: 1px solid var(--rule-strong);
+  color: var(--ink); padding: 10px 14px; border-radius: var(--radius); min-width: 240px; flex: 1 1 240px;
+}
+#catalog-search:focus{ outline: none; border-color: var(--cyan); }
+.chips{ display:flex; flex-wrap: wrap; gap: 8px; }
+.chip{
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: .02em; padding: 7px 12px; border-radius: 20px;
+  border: 1px solid var(--rule-strong); background: transparent; color: var(--ink-dim); cursor: pointer;
+}
+.chip:hover{ border-color: var(--cyan); color: var(--cyan); }
+.chip.is-active{ background: var(--amber); border-color: var(--amber); color: #0c0f28; font-weight: 700; }
+#catalog-count{ font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-faint); margin-left: auto; }
+
+.group{ margin-top: 46px; }
+.group-heading{
+  display:flex; align-items:baseline; gap: 12px; font-family: var(--font-mono); font-size: 13px; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--ink-faint); border-bottom: 1px solid var(--rule); padding-bottom: 10px; margin-bottom: 20px;
+}
+.group-heading .count{ color: var(--ink-faint); font-weight: 400; }
+.grid{ display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+
+.card{ border: 1px solid var(--rule-strong); border-radius: var(--radius); background: var(--bg-1); padding: 18px 18px 16px; display: flex; flex-direction: column; transition: border-color .15s, transform .15s; }
+.card:hover{ border-color: var(--cyan-dim); }
+.card-head{ display:flex; align-items:center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.card-name{ font-family: var(--font-mono); font-size: 14.5px; color: var(--amber); font-weight: 700; }
+.tag{ font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; padding: 2px 7px; border-radius: 3px; border: 1px solid var(--rule-strong); color: var(--ink-faint); }
+.tag-ds{ color: var(--cyan); border-color: var(--cyan-dim); }
+.tag-new{ color: var(--ok); border-color: var(--ok); }
+.card-desc{ font-size: 14.6px; color: var(--ink-dim); margin: 0 0 10px; line-height: 1.55; }
+.card details{ margin-top: auto; }
+.card summary{ font-family: var(--font-mono); font-size: 12px; color: var(--cyan); cursor: pointer; list-style: none; text-transform: uppercase; letter-spacing: .06em; }
+.card summary::-webkit-details-marker{ display:none; }
+.card summary::before{ content: "\25B8 "; }
+.card details[open] summary::before{ content: "\25BE "; }
+.card details .code-wrap{ margin-top: 12px; }
+.card details .code-wrap pre{ font-size: 12.4px; max-height: 420px; overflow-y: auto; }
+.no-results{ font-family: var(--font-mono); color: var(--ink-faint); padding: 40px 0; text-align: center; display: none; }
+
+/* ============================================================
+   9. PATTERNS
+   ============================================================ */
+.pattern-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 36px; }
+.pattern-block h3{ font-size: 19px; margin-bottom: 8px; }
+.pattern-block p{ color: var(--ink-dim); font-size: 15.5px; }
+@media (max-width: 900px){ .pattern-grid{ grid-template-columns: 1fr; } }
+
+/* ============================================================
+   10. FOOTER
+   ============================================================ */
+footer{ padding: 56px 0 70px; }
+.footer-grid{ display:flex; justify-content: space-between; flex-wrap: wrap; gap: 30px; }
+.footer-col h5{ font-family: var(--font-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-faint); margin-bottom: 12px; }
+.footer-col a{ display:block; margin-bottom: 8px; color: var(--ink-dim); border: none; font-size: 14.5px; }
+.footer-col a:hover{ color: var(--amber); }
+.footer-note{ margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--rule); font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-faint); }
+
+/* ============================================================
+   11. RESPONSIVE
+   ============================================================ */
+@media (max-width: 980px){
+  .hero-inner{ grid-template-columns: 1fr; }
+  .role-grid{ grid-template-columns: 1fr; }
+  .topnav{ display: none; }
+}
+@media (max-width: 600px){
+  section{ padding: 64px 0; }
+  .wrap{ padding: 0 18px; }
+  .step{ grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <a href="#top" class="brand">iaas<span class="dim">_mcp</span><span class="cursor"></span></a>
+    <nav class="topnav">
+      <a href="#what">What it is</a>
+      <a href="#auth">Auth</a>
+      <a href="#quickstart">Quick start</a>
+      <a href="#tools">Tools</a>
+      <a href="#trisync">Tri-sync</a>
+    </nav>
+    <div class="top-actions">
+      <button class="icon-btn" id="theme-toggle" title="Toggle theme" aria-label="Toggle color theme">&#9680;</button>
+      <a class="icon-btn" href="https://github.com/hypervisor-io/iaas-mcp-server" title="Source on GitHub" aria-label="Source on GitHub" style="text-decoration:none;">&#8997;</a>
+    </div>
+  </div>
+</div>
+
+<main id="top">
+
+  <!-- ============================================================
+       HERO
+       ============================================================ -->
+  <section class="hero" id="overview">
+    <div class="hero-grid-bg"></div>
+    <div class="hero-dot" style="top: 22%; left: 62%;"></div>
+    <div class="hero-dot c2" style="top: 48%; left: 84%;"></div>
+    <div class="hero-dot c3" style="top: 68%; left: 58%;"></div>
+    <div class="wrap hero-inner">
+      <div>
+        <div class="eyebrow">Model Context Protocol server</div>
+        <h1>Give an AI agent the <em>whole IaaS platform.</em></h1>
+        <p class="hero-lede">
+          <code class="mono">iaas-mcp-server</code> is a remote, stateless Streamable-HTTP MCP server
+          that exposes the Hypervisor.io platform to any MCP client. 285 tools cover instances, VPCs,
+          Kubernetes, managed databases, load balancers, DNS, VPN, object storage and more, backed by the
+          same tested API client as the <code class="mono">iaas</code> OpenTofu provider. Bearer
+          pass-through auth, confirm-gated deletes, async convergence built in.
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#quickstart">Connect a client &#8594;</a>
+          <a class="btn btn-ghost" href="#tools">Browse the tools</a>
+        </div>
+        <div class="stat-row">
+          <div class="stat"><b>285</b><span>Tools</span></div>
+          <div class="stat"><b>223</b><span>User</span></div>
+          <div class="stat"><b>62</b><span>Admin (curated)</span></div>
+        </div>
+      </div>
+      <div class="term">
+        <div class="term-bar">
+          <div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div>
+          <div class="term-title">~/mcp - run &amp; smoke test</div>
+        </div>
+        <pre><code><span class="tok-com"># required: the platform API base URL</span>
+<span class="tok-key">export</span> IAAS_API_ENDPOINT=<span class="tok-str">"https://panel.example.com/api"</span>
+<span class="tok-key">export</span> IAAS_MCP_LISTEN=<span class="tok-str">":8080"</span>   <span class="tok-com"># optional (default)</span>
+
+<span class="tok-com">$ go build -o iaas-mcp-server . &amp;&amp; ./iaas-mcp-server</span>
+<span class="tok-add">listening on :8080  POST /mcp  GET /healthz</span>
+
+<span class="tok-com"># list the tools (Bearer pass-through)</span>
+<span class="tok-com">$ curl -sN localhost:8080/mcp \</span>
+<span class="tok-com">    -H "Authorization: Bearer $IAAS_API_TOKEN" \</span>
+<span class="tok-com">    -H "Accept: application/json, text/event-stream" \</span>
+<span class="tok-com">    -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'</span>
+<span class="tok-flag">  &#8594; 285 tools  (223 user.* + 62 admin.*)</span>
+<span class="tok-add">  user.instance.create   user.vpc.attach_instance   ...</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       WHAT IT IS
+       ============================================================ -->
+  <section id="what">
+    <div class="wrap">
+      <div class="eyebrow">What it is</div>
+      <h2 class="section-title">One MCP server over the whole platform</h2>
+      <p class="lede">A single binary that speaks the modern Streamable-HTTP MCP transport in stateless
+        mode, so any request lands on any replica and it scales horizontally with no session store.</p>
+
+      <div class="role-grid">
+        <div class="role-card">
+          <h3><span class="role-tag">Remote &amp; stateless</span></h3>
+          <p>Tools run over <strong>Streamable-HTTP</strong> in stateless mode. There is no per-connection
+            state and no session store, so it sits behind a load balancer and scales out cleanly. It exposes
+            exactly two HTTP surfaces: <code class="mono">POST /mcp</code> (the MCP endpoint, Bearer required)
+            and <code class="mono">GET /healthz</code> (a plain, unauthenticated liveness probe that returns
+            <code class="mono">ok</code>). The process drains in-flight requests on SIGINT / SIGTERM.</p>
+        </div>
+        <div class="role-card">
+          <h3><span class="role-tag admin">Shared, tested client</span></h3>
+          <p>It reuses the API client and async waiter from the OpenTofu provider
+            <code class="mono">github.com/hypervisor-io/terraform-provider-iaas</code>, so the IaC provider
+            and this server call the platform through one shared, tested implementation. The REST API is the
+            single source of truth; the provider and this server are kept in lockstep with it by a CI gate
+            (see <a href="#trisync">Tri-sync</a>).</p>
+        </div>
+      </div>
+
+      <div class="callout callout-info">
+        <h4>Two endpoints, nothing else</h4>
+        <p><code class="mono">POST /mcp</code> is the JSON-RPC MCP endpoint; a request without an
+          <code class="mono">Authorization</code> header returns HTTP <code class="mono">401</code> (an MCP
+          auth error). <code class="mono">GET /healthz</code> needs no auth and answers
+          <code class="mono">ok</code>. Requires Go 1.25+ to build.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       AUTHENTICATION
+       ============================================================ -->
+  <section id="auth">
+    <div class="wrap">
+      <div class="eyebrow">Authentication</div>
+      <h2 class="section-title">Bearer pass-through, nothing stored</h2>
+      <p class="lede">The server does not verify or store tokens. Every MCP request must carry
+        <code class="mono">Authorization: Bearer &lt;platform-api-token&gt;</code>; the server relays that
+        token to the platform API, which authorizes it. Token handling lives behind one seam
+        (<code class="mono">internal/iaasauth</code>) so a later OAuth 2.1 facade can drop in without
+        touching a single tool.</p>
+
+      <div class="role-grid">
+        <div class="role-card">
+          <h3><span class="role-tag">User token</span></h3>
+          <p>Powers the <code class="mono">user.*</code> tools. Create one in the platform panel under API
+            tokens. By default it works from <strong>any IP</strong>; if you set
+            <code class="mono">allowed_ips</code> on the token, the MCP server's egress IP must be in that
+            list. Present a user token and the <code class="mono">admin.*</code> tools return an
+            authorization error with a hint.</p>
+        </div>
+        <div class="role-card">
+          <h3><span class="role-tag admin">Admin token</span></h3>
+          <p>Unlocks the curated <code class="mono">admin.*</code> tools. Generate it on the Master host with
+            <code class="mono">php artisan api:admin-token generate</code>. Admin tokens are
+            <strong>IP-locked</strong> to a registered IP, so the operator must register the MCP server's
+            egress IP for the token. There is no client-side scope check: the platform decides.</p>
+        </div>
+      </div>
+
+      <div class="callout callout-danger">
+        <h4>&#128274; Admin tokens are IP-locked</h4>
+        <p>A user token works from any source IP unless you pin it with <code class="mono">allowed_ips</code>.
+          An <strong>admin token is always IP-locked</strong>: the platform validates it against the exact
+          egress IP it was registered with, and a call from any other source IP is rejected with
+          <code class="mono">401</code> / <code class="mono">403</code> regardless of whether the token is
+          valid. Register the MCP server's stable egress IP before you expect any
+          <code class="mono">admin.*</code> tool to work. Never hard-code a token; read it from the client's
+          environment (the examples use <code class="mono">$IAAS_API_TOKEN</code>).</p>
+      </div>
+
+      <h3 style="font-family:var(--font-mono); font-size:16px; text-transform:uppercase; letter-spacing:.04em; margin-top:38px;">Environment variables</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Required</th><th>Default</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>IAAS_API_ENDPOINT</code></td><td>yes</td><td><span class="mono" style="color:var(--ink-faint)">none</span></td><td>Base URL of the platform API, e.g. <code>https://panel.example.com/api</code></td></tr>
+            <tr><td><code>IAAS_MCP_LISTEN</code></td><td>no</td><td><code>:8080</code></td><td>Address the HTTP server binds to</td></tr>
+            <tr><td><code>IAAS_API_TIMEOUT</code></td><td>no</td><td><code>30s</code></td><td>Per-request timeout to the platform API (Go duration)</td></tr>
+            <tr><td><code>IAAS_API_INSECURE</code></td><td>no</td><td><code>false</code></td><td>Skip TLS verification on calls to the platform API (staging only)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="code-wrap">
+        <button class="copy">copy</button>
+        <pre><code><span class="tok-key">export</span> IAAS_API_ENDPOINT=<span class="tok-str">"https://panel.example.com/api"</span>   <span class="tok-com"># required</span>
+<span class="tok-key">export</span> IAAS_MCP_LISTEN=<span class="tok-str">":8080"</span>                             <span class="tok-com"># optional (default)</span>
+<span class="tok-key">export</span> IAAS_API_TIMEOUT=<span class="tok-str">"30s"</span>                              <span class="tok-com"># optional (default)</span>
+<span class="tok-key">export</span> IAAS_API_INSECURE=<span class="tok-str">"false"</span>                           <span class="tok-com"># optional (default)</span>
+
+go build -o iaas-mcp-server .   <span class="tok-com"># requires Go 1.25+</span>
+./iaas-mcp-server               <span class="tok-com"># or: go run .</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       QUICK START / CLIENT CONFIG
+       ============================================================ -->
+  <section id="quickstart">
+    <div class="wrap">
+      <div class="eyebrow">Quick start</div>
+      <h2 class="section-title">Point a client at <code class="mono" style="font-size:.8em;">/mcp</code></h2>
+      <p class="lede">The examples assume the server is reachable at
+        <code class="mono">https://mcp.example.com/mcp</code> and your token is in
+        <code class="mono">$IAAS_API_TOKEN</code>. Never paste a real token into a config you commit.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num"></div>
+          <div>
+            <h3>Run the server</h3>
+            <p>A single static binary, or a distroless container. Set the required
+              <code class="mono">IAAS_API_ENDPOINT</code> and go.</p>
+            <div class="code-wrap">
+              <button class="copy">copy</button>
+              <pre><code><span class="tok-com"># container</span>
+docker run --rm -p 8080:8080 \
+  -e IAAS_API_ENDPOINT=<span class="tok-str">"https://panel.example.com/api"</span> \
+  iaas-mcp-server
+
+<span class="tok-com"># or straight from source (Go 1.25+)</span>
+go build -o iaas-mcp-server . &amp;&amp; ./iaas-mcp-server</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num"></div>
+          <div>
+            <h3>Remote connector (hosted MCP client)</h3>
+            <p>In any client that supports remote (Streamable-HTTP) connectors, add a custom connector
+              pointing at the server's <code class="mono">/mcp</code> URL and supply the Authorization
+              header. The connector then lists the tools and lets the agent call them.</p>
+            <div class="code-wrap">
+              <button class="copy">copy</button>
+              <pre><code><span class="tok-com"># URL</span>
+https://mcp.example.com/mcp
+<span class="tok-com"># Header</span>
+Authorization: Bearer &lt;your platform API token&gt;</code></pre>
+            </div>
+            <p style="font-size:15px;">Use a <strong>user</strong> token for <code class="mono">user.*</code>
+              tools, or an <strong>admin</strong> token (IP-locked; the server's egress IP must be
+              registered) to also reach <code class="mono">admin.*</code> tools.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num"></div>
+          <div>
+            <h3>Stdio-only client (via the mcp-remote bridge)</h3>
+            <p>Some clients launch servers only as local stdio processes. Bridge them to the remote
+              Streamable-HTTP endpoint with <code class="mono">mcp-remote</code>, as a stdio server entry:</p>
+            <div class="code-wrap">
+              <button class="copy">copy</button>
+              <pre><code>{
+  <span class="tok-str">"mcpServers"</span>: {
+    <span class="tok-str">"hypervisor"</span>: {
+      <span class="tok-str">"command"</span>: <span class="tok-str">"npx"</span>,
+      <span class="tok-str">"args"</span>: [
+        <span class="tok-str">"-y"</span>, <span class="tok-str">"mcp-remote"</span>,
+        <span class="tok-str">"https://mcp.example.com/mcp"</span>,
+        <span class="tok-str">"--header"</span>, <span class="tok-str">"Authorization: Bearer ${IAAS_API_TOKEN}"</span>
+      ],
+      <span class="tok-str">"env"</span>: { <span class="tok-str">"IAAS_API_TOKEN"</span>: <span class="tok-str">"your-platform-api-token"</span> }
+    }
+  }
+}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num"></div>
+          <div>
+            <h3>Generic mcp.json-style client</h3>
+            <p>Clients that speak Streamable-HTTP directly (VS Code, custom agents) take the URL and header
+              inline:</p>
+            <div class="code-wrap">
+              <button class="copy">copy</button>
+              <pre><code>{
+  <span class="tok-str">"servers"</span>: {
+    <span class="tok-str">"hypervisor"</span>: {
+      <span class="tok-str">"type"</span>: <span class="tok-str">"http"</span>,
+      <span class="tok-str">"url"</span>: <span class="tok-str">"https://mcp.example.com/mcp"</span>,
+      <span class="tok-str">"headers"</span>: { <span class="tok-str">"Authorization"</span>: <span class="tok-str">"Bearer ${env:IAAS_API_TOKEN}"</span> }
+    }
+  }
+}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num"></div>
+          <div>
+            <h3>curl smoke test</h3>
+            <p>The transport is JSON-RPC over HTTP; responses come back as Server-Sent Events, so send
+              <code class="mono">Accept: application/json, text/event-stream</code>. Because the server is
+              stateless, each request is independent.</p>
+            <div class="code-wrap">
+              <button class="copy">copy</button>
+              <pre><code><span class="tok-com"># initialize</span>
+curl -sN https://mcp.example.com/mcp \
+  -H <span class="tok-str">"Content-Type: application/json"</span> \
+  -H <span class="tok-str">"Accept: application/json, text/event-stream"</span> \
+  -H <span class="tok-str">"Authorization: Bearer $IAAS_API_TOKEN"</span> \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize",
+       "params":{"protocolVersion":"2025-06-18","capabilities":{},
+                 "clientInfo":{"name":"smoke","version":"0.0.1"}}}'
+
+<span class="tok-com"># list the tools</span>
+curl -sN https://mcp.example.com/mcp \
+  -H <span class="tok-str">"Accept: application/json, text/event-stream"</span> \
+  -H <span class="tok-str">"Authorization: Bearer $IAAS_API_TOKEN"</span> \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+
+<span class="tok-com"># liveness (no auth)</span>
+curl https://mcp.example.com/healthz    <span class="tok-com"># &#8594; ok</span></code></pre>
+            </div>
+            <p style="font-size:15px;">A <code class="mono">POST /mcp</code> without an
+              <code class="mono">Authorization</code> header returns HTTP <code class="mono">401</code>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-info">
+        <h4>Your first task</h4>
+        <p>A typical flow: discover what to deploy, create an instance (async), then attach it to a VPC. Tool
+          calls use <code class="mono">tools/call</code> with <code class="mono">{"name": ..., "arguments": ...}</code>.</p>
+        <ul>
+          <li><strong>Discover:</strong> <code class="mono">user.catalog.locations</code>, then
+            <code class="mono">user.catalog.plan_groups</code>, <code class="mono">user.catalog.plans</code>,
+            <code class="mono">user.catalog.images</code> to resolve ids by name.</li>
+          <li><strong>Create (async):</strong> <code class="mono">user.instance.create</code> waits until the
+            instance is <code class="mono">deployed</code>, then returns it.</li>
+          <li><strong>Attach:</strong> <code class="mono">user.vpc.attach_instance</code> auto-assigns the
+            lowest free IP as primary and returns the attached IPs.</li>
+          <li><strong>Clean up (confirm-gated):</strong> <code class="mono">user.instance.delete</code> with
+            <code class="mono">{"id": "...", "confirm": true}</code>; without
+            <code class="mono">"confirm": true</code> it refuses.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       TOOL SURFACE / CATALOG
+       ============================================================ -->
+  <section id="tools">
+    <div class="wrap">
+      <div class="eyebrow">Reference</div>
+      <h2 class="section-title">Every tool family</h2>
+      <p class="lede">All 285 tools, named <code class="mono">user.&lt;family&gt;.&lt;action&gt;</code> and
+        <code class="mono">admin.&lt;family&gt;.&lt;action&gt;</code>, grouped by domain. Search narrows by
+        name or purpose; the chips narrow by group. Families backed by a platform task are tagged
+        <span class="tag tag-new">ASYNC</span>.</p>
+
+      <div class="catalog-controls">
+        <input id="catalog-search" type="text" placeholder="Search - e.g. &quot;kubernetes&quot;, &quot;volume&quot;, &quot;dns&quot;, &quot;admin&quot;&#8230;" autocomplete="off">
+        <div class="chips">
+          <button class="chip is-active" data-group="all">All</button>
+          <button class="chip" data-group="compute">Compute</button>
+          <button class="chip" data-group="networking">Networking</button>
+          <button class="chip" data-group="security">Security</button>
+          <button class="chip" data-group="lb">Load balancing</button>
+          <button class="chip" data-group="vpn">VPN</button>
+          <button class="chip" data-group="dns">DNS</button>
+          <button class="chip" data-group="db">Databases</button>
+          <button class="chip" data-group="storage">Storage</button>
+          <button class="chip" data-group="k8s">Kubernetes</button>
+          <button class="chip" data-group="ops">Ops &amp; account</button>
+          <button class="chip" data-group="admin">Admin</button>
+        </div>
+        <div id="catalog-count" class="mono"></div>
+      </div>
+
+      <!-- ============ COMPUTE ============ -->
+      <div class="group" data-group-section="compute">
+        <div class="group-heading">Compute &amp; instances <span class="count">&#183; 8 families</span></div>
+        <div class="grid">
+
+          <article class="card" data-group="compute" data-search="user.instance instance vm virtual machine create list get delete deploy async">
+            <div class="card-head"><code class="card-name">user.instance</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span><span class="tag tag-new">ASYNC</span></div>
+            <p class="card-desc">Full VM lifecycle. <code class="mono">create</code> enqueues a deploy task and waits until the instance is <code class="mono">deployed</code>; <code class="mono">delete</code> is confirm-gated and waits until it is fully removed.</p>
+            <details><summary>Tools</summary>
+              <div class="code-wrap"><button class="copy">copy</button><pre><code>user.instance.create   <span class="tok-com"># async: waits for "deployed"</span>
+user.instance.list
+user.instance.get
+user.instance.delete   <span class="tok-com"># confirm-gated</span></code></pre></div>
+            </details>
+          </article>
+
+          <article class="card" data-group="compute" data-search="user.ssh_key ssh key public key create update">
+            <div class="card-head"><code class="card-name">user.ssh_key</code><span class="tag">user</span><span class="tag tag-ds">5 tools</span></div>
+            <p class="card-desc">Register SSH public keys for injection into instances at provision time. create / list / get / update / delete.</p>
+          </article>
+
+          <article class="card" data-group="compute" data-search="user.user_script cloud-init startup script bootstrap">
+            <div class="card-head"><code class="card-name">user.user_script</code><span class="tag">user</span><span class="tag tag-ds">5 tools</span></div>
+            <p class="card-desc">Manage reusable cloud-init / startup scripts attachable to instances. create / list / get / update / delete.</p>
+          </article>
+
+          <article class="card" data-group="compute" data-search="user.image snapshot capture custom image async">
+            <div class="card-head"><code class="card-name">user.image</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span><span class="tag tag-new">ASYNC</span></div>
+            <p class="card-desc">Capture a custom image (snapshot) from an instance; creation converges to available. create / list / get / delete.</p>
+          </article>
+
+          <article class="card" data-group="compute" data-search="user.docker_deployment docker compose app container deploy">
+            <div class="card-head"><code class="card-name">user.docker_deployment</code><span class="tag">user</span><span class="tag tag-ds">5 tools</span></div>
+            <p class="card-desc">Deploy a catalog Docker app or a custom Compose file onto an instance, installing the engine first if needed. deploy_app / deploy_compose / list / get / delete.</p>
+          </article>
+
+          <article class="card" data-group="compute" data-search="user.instance_backup_policy backup schedule retention attach">
+            <div class="card-head"><code class="card-name">user.instance_backup_policy</code><span class="tag">user</span><span class="tag tag-ds">6 tools</span></div>
+            <p class="card-desc">Named backup schedule &amp; retention policy; instances attach and detach in place. create / list / get / attach_instance / detach_instance / delete.</p>
+          </article>
+
+          <article class="card" data-group="compute" data-search="user.autoscaling_group fleet min max self-healing pause resume async">
+            <div class="card-head"><code class="card-name">user.autoscaling_group</code><span class="tag">user</span><span class="tag tag-ds">7 tools</span><span class="tag tag-new">ASYNC</span></div>
+            <p class="card-desc">A self-healing fleet kept between min and max instances. create / list / get / update / pause / resume / delete.</p>
+          </article>
+
+          <article class="card" data-group="compute" data-search="user.autoscaling_policy scaling policy cpu memory threshold">
+            <div class="card-head"><code class="card-name">user.autoscaling_policy</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span></div>
+            <p class="card-desc">A CPU or memory-driven scale up/down policy attached to an autoscaling group. create / get / update / delete.</p>
+          </article>
+
+        </div>
+      </div>
+
+      <!-- ============ NETWORKING ============ -->
+      <div class="group" data-group-section="networking">
+        <div class="group-heading">Networking - VPC &amp; IP <span class="count">&#183; 5 families</span></div>
+        <div class="grid">
+
+          <article class="card" data-group="networking" data-search="user.vpc virtual private cloud network attach instance">
+            <div class="card-head"><code class="card-name">user.vpc</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span></div>
+            <p class="card-desc">Isolated layer-2 private networks. <code class="mono">attach_instance</code> auto-assigns the lowest free IP as primary. create / list / get / attach_instance.</p>
+          </article>
+
+          <article class="card" data-group="networking" data-search="user.instance_vpc attachment interface primary ip additional ips">
+            <div class="card-head"><code class="card-name">user.instance_vpc</code><span class="tag">user</span><span class="tag tag-ds">6 tools</span></div>
+            <p class="card-desc">Manage an instance's VPC interface and its IPs. add_ip / remove_ip / set_primary_ip / list_ips / list_available_ips / disable.</p>
+          </article>
+
+          <article class="card" data-group="networking" data-search="user.nat_gateway egress outbound internet private subnet async">
+            <div class="card-head"><code class="card-name">user.nat_gateway</code><span class="tag">user</span><span class="tag tag-ds">8 tools</span><span class="tag tag-new">ASYNC</span></div>
+            <p class="card-desc">The single egress gateway for a VPC's private subnets. create / get / get_for_vpc / attach_subnet / detach_subnet / enable / disable / delete.</p>
+          </article>
+
+          <article class="card" data-group="networking" data-search="user.static_ip reserve allocate public ipv4 address deallocate">
+            <div class="card-head"><code class="card-name">user.static_ip</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span></div>
+            <p class="card-desc">Reserve a long-lived public IPv4 from a location's pool. allocate / list / get / deallocate (confirm-gated).</p>
+          </article>
+
+          <article class="card" data-group="networking" data-search="user.ip_set cidr collection firewall reference entries bulk">
+            <div class="card-head"><code class="card-name">user.ip_set</code><span class="tag">user</span><span class="tag tag-ds">7 tools</span></div>
+            <p class="card-desc">Named, version-scoped sets of CIDR entries referenced from security-group rules. create / list / get / add_entry / bulk_add / remove_entry / delete.</p>
+          </article>
+
+        </div>
+      </div>
+
+      <!-- ============ SECURITY ============ -->
+      <div class="group" data-group-section="security">
+        <div class="group-heading">Security <span class="count">&#183; 1 family</span></div>
+        <div class="grid">
+          <article class="card" data-group="security" data-search="user.security_group firewall rules stateful attach instance rule">
+            <div class="card-head"><code class="card-name">user.security_group</code><span class="tag">user</span><span class="tag tag-ds">8 tools</span></div>
+            <p class="card-desc">Named, stateful firewall rule sets attachable to instances. Rules and attachments update in place. create / list / get / add_rule / remove_rule / attach_instances / detach_instances / delete.</p>
+          </article>
+        </div>
+      </div>
+
+      <!-- ============ LOAD BALANCING ============ -->
+      <div class="group" data-group-section="lb">
+        <div class="group-heading">Load balancing <span class="count">&#183; 1 family</span></div>
+        <div class="grid">
+          <article class="card" data-group="lb" data-search="user.load_balancer haproxy frontend backend target routing rule certificate async">
+            <div class="card-head"><code class="card-name">user.load_balancer</code><span class="tag">user</span><span class="tag tag-ds">22 tools</span><span class="tag tag-new">ASYNC</span></div>
+            <p class="card-desc">HAProxy load balancers plus their frontends, backends, targets, routing rules and certificates as child tools. The balancer itself deploys asynchronously.</p>
+            <details><summary>Tools</summary>
+              <div class="code-wrap"><button class="copy">copy</button><pre><code>user.load_balancer.create / list / get / delete   <span class="tok-com"># async</span>
+user.load_balancer.frontend_create / _get / _update / _delete
+user.load_balancer.backend_create / _get / _delete
+user.load_balancer.target_create / _get / _update / _delete
+user.load_balancer.routing_rule_create / _get / _update / _delete
+user.load_balancer.certificate_create / _get / _delete</code></pre></div>
+            </details>
+          </article>
+        </div>
+      </div>
+
+      <!-- ============ VPN ============ -->
+      <div class="group" data-group-section="vpn">
+        <div class="group-heading">VPN <span class="count">&#183; 2 families</span></div>
+        <div class="grid">
+          <article class="card" data-group="vpn" data-search="user.vpn_gateway wireguard peer config gateway async">
+            <div class="card-head"><code class="card-name">user.vpn_gateway</code><span class="tag">user</span><span class="tag tag-ds">8 tools</span></div>
+            <p class="card-desc">A VPN gateway and its peers. create / get / delete plus add_peer / get_peer / update_peer / remove_peer / peer_config.</p>
+          </article>
+          <article class="card" data-group="vpn" data-search="user.vpn_peering site-to-site peering connect gateways">
+            <div class="card-head"><code class="card-name">user.vpn_peering</code><span class="tag">user</span><span class="tag tag-ds">3 tools</span></div>
+            <p class="card-desc">Peering between VPN gateways. create / get / delete.</p>
+          </article>
+        </div>
+      </div>
+
+      <!-- ============ DNS ============ -->
+      <div class="group" data-group-section="dns">
+        <div class="group-heading">DNS <span class="count">&#183; 3 families</span></div>
+        <div class="grid">
+          <article class="card" data-group="dns" data-search="user.dns_zone zone attach vpc private dns records">
+            <div class="card-head"><code class="card-name">user.dns_zone</code><span class="tag">user</span><span class="tag tag-ds">7 tools</span></div>
+            <p class="card-desc">Authoritative DNS zones, attachable to VPCs for private resolution. create / list / get / update / attach_vpc / detach_vpc / delete.</p>
+          </article>
+          <article class="card" data-group="dns" data-search="user.dns_record_set record set rrset a aaaa cname">
+            <div class="card-head"><code class="card-name">user.dns_record_set</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span></div>
+            <p class="card-desc">Record sets (RRsets) within a zone. create / get / update / delete.</p>
+          </article>
+          <article class="card" data-group="dns" data-search="user.dns_record individual record entry value ttl">
+            <div class="card-head"><code class="card-name">user.dns_record</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span></div>
+            <p class="card-desc">Individual records inside a record set. create / get / update / delete.</p>
+          </article>
+        </div>
+      </div>
+
+      <!-- ============ DATABASES ============ -->
+      <div class="group" data-group-section="db">
+        <div class="group-heading">Managed databases <span class="count">&#183; 4 families</span></div>
+        <div class="grid">
+          <article class="card" data-group="db" data-search="user.managed_database managed database resize upgrade restart replica async">
+            <div class="card-head"><code class="card-name">user.managed_database</code><span class="tag">user</span><span class="tag tag-ds">11 tools</span><span class="tag tag-new">ASYNC</span></div>
+            <p class="card-desc">Managed database instances. create / list / get / resize / upgrade / restart / reset_password / resync_replicas / acknowledge_error / retry / delete.</p>
+          </article>
+          <article class="card" data-group="db" data-search="user.db_replica read replica database">
+            <div class="card-head"><code class="card-name">user.db_replica</code><span class="tag">user</span><span class="tag tag-ds">1 tool</span></div>
+            <p class="card-desc">Provision a read replica of a managed database. create.</p>
+          </article>
+          <article class="card" data-group="db" data-search="user.db_parameter_group database parameter tuning config group">
+            <div class="card-head"><code class="card-name">user.db_parameter_group</code><span class="tag">user</span><span class="tag tag-ds">5 tools</span></div>
+            <p class="card-desc">Reusable database parameter (tuning) groups. create / list / get / update / delete.</p>
+          </article>
+          <article class="card" data-group="db" data-search="user.db_backup_policy database backup schedule attach">
+            <div class="card-head"><code class="card-name">user.db_backup_policy</code><span class="tag">user</span><span class="tag tag-ds">6 tools</span></div>
+            <p class="card-desc">Database backup schedule &amp; retention policies. create / list / get / attach_database / detach_database / delete.</p>
+          </article>
+        </div>
+      </div>
+
+      <!-- ============ STORAGE ============ -->
+      <div class="group" data-group-section="storage">
+        <div class="group-heading">Storage &amp; object storage <span class="count">&#183; 3 families</span></div>
+        <div class="grid">
+          <article class="card" data-group="storage" data-search="user.volume block storage disk attach resize snapshot">
+            <div class="card-head"><code class="card-name">user.volume</code><span class="tag">user</span><span class="tag tag-ds">10 tools</span></div>
+            <p class="card-desc">Block-storage volumes and their snapshots. create / list / get / resize / attach / detach / snapshot_create / snapshot_get / snapshot_delete / delete.</p>
+          </article>
+          <article class="card" data-group="storage" data-search="user.s3_bucket object storage bucket acl key attach">
+            <div class="card-head"><code class="card-name">user.s3_bucket</code><span class="tag">user</span><span class="tag tag-ds">9 tools</span></div>
+            <p class="card-desc">S3-compatible buckets, ACLs and key attachments. create / list / get / set_acl / list_keys / attach_key / update_key / detach_key / delete.</p>
+          </article>
+          <article class="card" data-group="storage" data-search="user.s3_access_key object storage access key secret credentials">
+            <div class="card-head"><code class="card-name">user.s3_access_key</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span></div>
+            <p class="card-desc">S3 access keys; the secret is returned only once at create. create / list / get / update.</p>
+          </article>
+        </div>
+      </div>
+
+      <!-- ============ KUBERNETES ============ -->
+      <div class="group" data-group-section="k8s">
+        <div class="group-heading">Kubernetes <span class="count">&#183; 4 families</span></div>
+        <div class="grid">
+          <article class="card" data-group="k8s" data-search="user.kubernetes_cluster k8s cluster kubeconfig upgrade control plane workers ccm autoscaler async">
+            <div class="card-head"><code class="card-name">user.kubernetes_cluster</code><span class="tag">user</span><span class="tag tag-ds">10 tools</span><span class="tag tag-new">ASYNC</span></div>
+            <p class="card-desc">Managed clusters. create waits until running. create / list / get / kubeconfig / upgrade_control_plane / upgrade_workers / upgrade_ccm / retry_upgrade / autoscaler_manifest / delete.</p>
+          </article>
+          <article class="card" data-group="k8s" data-search="user.kubernetes_node_pool k8s worker node pool scale">
+            <div class="card-head"><code class="card-name">user.kubernetes_node_pool</code><span class="tag">user</span><span class="tag tag-ds">5 tools</span></div>
+            <p class="card-desc">Worker node pools within a cluster. create / list / get / update / delete.</p>
+          </article>
+          <article class="card" data-group="k8s" data-search="user.kubernetes_security_group_rule k8s firewall rule cluster">
+            <div class="card-head"><code class="card-name">user.kubernetes_security_group_rule</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span></div>
+            <p class="card-desc">Firewall rules on a cluster's security group. create / list / get / delete.</p>
+          </article>
+          <article class="card" data-group="k8s" data-search="user.kubernetes_ssl_certificate k8s tls certificate ingress">
+            <div class="card-head"><code class="card-name">user.kubernetes_ssl_certificate</code><span class="tag">user</span><span class="tag tag-ds">4 tools</span></div>
+            <p class="card-desc">TLS certificates managed for a cluster. create / list / get / delete.</p>
+          </article>
+        </div>
+      </div>
+
+      <!-- ============ OPS & ACCOUNT ============ -->
+      <div class="group" data-group-section="ops">
+        <div class="group-heading">Ops &amp; account <span class="count">&#183; 4 families</span></div>
+        <div class="grid">
+          <article class="card" data-group="ops" data-search="user.catalog read-only locations plans images isos k8s versions discover">
+            <div class="card-head"><code class="card-name">user.catalog</code><span class="tag">user</span><span class="tag tag-ds">12 tools</span></div>
+            <p class="card-desc">Read-only discovery: resolve ids by name before you build. locations / plan_groups / plans / images / isos and the k8s_* catalogs (regions, versions, worker/control-plane/load-balancer plans, subnets, vpcs).</p>
+          </article>
+          <article class="card" data-group="ops" data-search="user.project resource grouping assign tag organize">
+            <div class="card-head"><code class="card-name">user.project</code><span class="tag">user</span><span class="tag tag-ds">7 tools</span></div>
+            <p class="card-desc">Group resources into projects. create / list / get / update / assign_resource / unassign_resource / delete.</p>
+          </article>
+          <article class="card" data-group="ops" data-search="user.notification_channel alert notify email webhook slack">
+            <div class="card-head"><code class="card-name">user.notification_channel</code><span class="tag">user</span><span class="tag tag-ds">5 tools</span></div>
+            <p class="card-desc">Delivery channels for monitoring alerts. create / list / get / update / delete.</p>
+          </article>
+          <article class="card" data-group="ops" data-search="user.alert_rule monitoring threshold metric rule">
+            <div class="card-head"><code class="card-name">user.alert_rule</code><span class="tag">user</span><span class="tag tag-ds">5 tools</span></div>
+            <p class="card-desc">Metric-threshold alert rules routed to notification channels. create / list / get / update / delete.</p>
+          </article>
+        </div>
+      </div>
+
+      <!-- ============ ADMIN ============ -->
+      <div class="group" data-group-section="admin">
+        <div class="group-heading">Admin - curated allowlist <span class="count">&#183; 62 tools, reads + 2 safe mutations</span></div>
+        <div class="grid">
+          <article class="card" data-group="admin" data-search="admin.instance list get inspect ips disks backups metrics inventory read">
+            <div class="card-head"><code class="card-name">admin.instance</code><span class="tag tag-ds">admin</span><span class="tag">7 tools</span></div>
+            <p class="card-desc">Fleet-wide instance inventory, read-only. list / get / list_by_user / ips / disks / backups / metrics.</p>
+          </article>
+          <article class="card" data-group="admin" data-search="admin.hypervisor group storage maintenance metrics stats set_maintenance reversible">
+            <div class="card-head"><code class="card-name">admin.hypervisor</code><span class="tag tag-ds">admin</span><span class="tag">11 tools</span></div>
+            <p class="card-desc">Hypervisor, group and storage reads, plus the one reversible mutation <code class="mono">set_maintenance</code> (confirm-gated). list / get / metrics / instance_stats / set_maintenance and the hypervisor_group / hypervisor_storage reads.</p>
+          </article>
+          <article class="card" data-group="admin" data-search="admin.subnet ip vpc network read available ips statistics">
+            <div class="card-head"><code class="card-name">admin.subnet / ip / vpc</code><span class="tag tag-ds">admin</span><span class="tag">8 tools</span></div>
+            <p class="card-desc">Network inventory, read-only. subnet.list / get / ips / available_ips / statistics, ip.list, vpc.list / get.</p>
+          </article>
+          <article class="card" data-group="admin" data-search="admin.task migration logs operations read status">
+            <div class="card-head"><code class="card-name">admin.task / migration</code><span class="tag tag-ds">admin</span><span class="tag">6 tools</span></div>
+            <p class="card-desc">Operations reads. task.list / get / logs and migration.list / get / logs.</p>
+          </article>
+          <article class="card" data-group="admin" data-search="admin.rdns_request process approve reverse dns reversible">
+            <div class="card-head"><code class="card-name">admin.rdns_request</code><span class="tag tag-ds">admin</span><span class="tag">2 tools</span></div>
+            <p class="card-desc">Reverse-DNS request queue. list, plus the reversible mutation <code class="mono">process</code> (confirm-gated).</p>
+          </article>
+          <article class="card" data-group="admin" data-search="admin.user session system audit logs identity read">
+            <div class="card-head"><code class="card-name">admin.user / session / system</code><span class="tag tag-ds">admin</span><span class="tag">6 tools</span></div>
+            <p class="card-desc">Identity &amp; audit reads. user.list / get, session.list, system.admin_logs / email_log / ip_log.</p>
+          </article>
+          <article class="card" data-group="admin" data-search="admin.plans catalog billing backup storage currency inventory s3 read">
+            <div class="card-head"><code class="card-name">admin.* catalog &amp; plans</code><span class="tag tag-ds">admin</span><span class="tag">22 tools</span></div>
+            <p class="card-desc">Read-only catalog, billing and inventory: backup_plan, backup_storage, cs_location, cs_plan_group, currency, db_plan, image, instance_plan, iso, lb_plan, s3_plan, s3_server, s3_bucket, s3_access_key, self_provisioning_pack, volume_plan.</p>
+          </article>
+        </div>
+      </div>
+
+      <p class="no-results" id="no-results">No matching tool families. Try a different search term or choose "All".</p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       CROSS-CUTTING BEHAVIOR
+       ============================================================ -->
+  <section id="behavior">
+    <div class="wrap">
+      <div class="eyebrow">Cross-cutting behavior</div>
+      <h2 class="section-title">What every tool inherits</h2>
+      <p class="lede">Four behaviors are wired into the framework, so every tool in the catalog above
+        behaves predictably. Learn them once.</p>
+
+      <div class="pattern-grid">
+        <div class="pattern-block">
+          <h3>Confirm gate on destructive ops</h3>
+          <p>The 42 destructive tools (delete / deallocate / detach and the two reversible admin mutations)
+            refuse unless the call passes <code class="mono">"confirm": true</code>, so an agent cannot
+            destroy on a slip. A missing or false <code class="mono">confirm</code> fails closed.</p>
+          <div class="code-wrap"><button class="copy">copy</button><pre><code>user.instance.delete { <span class="tok-str">"id"</span>: <span class="tok-str">"..."</span> }
+  <span class="tok-com"># refused: confirmation required</span>
+
+user.instance.delete { <span class="tok-str">"id"</span>: <span class="tok-str">"..."</span>, <span class="tok-str">"confirm"</span>: <span class="tok-add">true</span> }
+  <span class="tok-com"># proceeds, then waits until fully removed</span></code></pre></div>
+        </div>
+
+        <div class="pattern-block">
+          <h3>Idempotency keys</h3>
+          <p>Mutating tools accept an optional <code class="mono">idempotency_key</code>. Where the platform
+            endpoint supports it (for example Kubernetes create / update / delete) it is threaded through,
+            so a retried call is deduplicated server-side rather than acting twice.</p>
+          <div class="code-wrap"><button class="copy">copy</button><pre><code>user.kubernetes_cluster.create {
+  <span class="tok-str">"name"</span>: <span class="tok-str">"prod"</span>,
+  <span class="tok-com"># ...</span>
+  <span class="tok-str">"idempotency_key"</span>: <span class="tok-str">"prod-cluster-2026-07-01"</span>
+}</code></pre></div>
+        </div>
+
+        <div class="pattern-block">
+          <h3>Async convergence via a waiter</h3>
+          <p>Create tools that enqueue a platform task poll to a terminal state and return the converged
+            object, so the agent gets a ready resource, not a pending id.
+            <code class="mono">user.instance.create</code> waits until <code class="mono">deployed</code>;
+            <code class="mono">user.kubernetes_cluster.create</code> waits until
+            <code class="mono">running</code>. The waiter is shared with the OpenTofu provider.</p>
+        </div>
+
+        <div class="pattern-block">
+          <h3>Error mapping</h3>
+          <p>Platform errors become actionable MCP results, not raw HTTP.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Platform</th><th>Becomes</th></tr></thead>
+              <tbody>
+                <tr><td><code>401</code> / <code>403</code></td><td>A scope / IP-lock hint</td></tr>
+                <tr><td><code>422</code></td><td>Surfaced field errors</td></tr>
+                <tr><td><code>404</code></td><td>Not-found</td></tr>
+                <tr><td><code>429</code></td><td>Surfaced as retryable</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-info">
+        <h4>The curated admin allowlist (spec 17, decision D3)</h4>
+        <p><code class="mono">admin.*</code> is a deliberately narrow, safe allowlist: admin <strong>reads</strong>
+          (list / get / inspect / stats across instances, users, hypervisors, subnets, tasks, plans, storages
+          and more) plus exactly two <strong>reversible</strong> mutations,
+          <code class="mono">admin.hypervisor.set_maintenance</code> and
+          <code class="mono">admin.rdns_request.process</code>.</p>
+      </div>
+
+      <div class="callout callout-danger">
+        <h4>Deliberately not exposed</h4>
+        <p>The admin surface intentionally omits every irreversible or fleet-wide-risk operation:</p>
+        <ul>
+          <li>Any billing or credit mutation</li>
+          <li>User deletion and impersonation-token minting</li>
+          <li>Hypervisor destroy / decommission</li>
+          <li>Bulk IP / subnet deletion, and other high-blast-radius actions</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       TRI-SYNC
+       ============================================================ -->
+  <section id="trisync">
+    <div class="wrap">
+      <div class="eyebrow">Tri-sync</div>
+      <h2 class="section-title">API, provider and MCP, in lockstep</h2>
+      <p class="lede">The platform REST API is the source of truth for three consumers that must not drift:
+        the API itself, the OpenTofu provider, and this MCP server.</p>
+
+      <p>A checked-in <code class="mono">api-manifest.json</code> records, per endpoint, whether the provider
+        and MCP cover or explicitly exclude it. Three CI checks, one per repo, fail the build on drift, and a
+        release cannot ship with an endpoint that this server neither covers nor explicitly excludes.</p>
+
+      <p>This repo's leg is <code class="mono">internal/tools/manifest_coverage_test.go</code>: it asserts that
+        every endpoint marked <code class="mono">mcp.status == "covered"</code> names a tool this server
+        actually registers, against a vendored copy of the manifest refreshed with
+        <code class="mono">make sync-manifest</code>. See spec 17
+        (<code class="mono">17-opentofu-mcp-api-trisync.md</code>) in the platform repo.</p>
+
+      <div class="code-wrap"><button class="copy">copy</button><pre><code>          <span class="tok-key">platform REST API</span>   <span class="tok-com"># single source of truth</span>
+                 &#9474;
+        api-manifest.json      <span class="tok-com"># per-endpoint: covered / excluded</span>
+          &#9581;&#9472;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9582;
+   OpenTofu provider     iaas-mcp-server
+   (terraform-           (this repo:
+    provider-iaas)        manifest_coverage_test.go)
+          &#9584;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9583;
+                 &#9474;
+        <span class="tok-add">3 CI gates fail on drift</span></code></pre></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h5>This server</h5>
+        <a href="https://github.com/hypervisor-io/iaas-mcp-server">github.com/hypervisor-io/iaas-mcp-server</a>
+        <a href="#quickstart">Quick start</a>
+        <a href="#tools">Tool reference</a>
+        <a href="#trisync">Tri-sync</a>
+      </div>
+      <div class="footer-col">
+        <h5>Related</h5>
+        <a href="https://github.com/hypervisor-io/terraform-provider-iaas">OpenTofu / Terraform provider</a>
+        <a href="https://hypervisor-io.github.io/terraform-provider-iaas/">Provider docs site</a>
+        <a href="https://modelcontextprotocol.io">Model Context Protocol</a>
+      </div>
+      <div class="footer-col">
+        <h5>Reference</h5>
+        <span class="mono" style="color:var(--ink-dim); font-size:14.5px; display:block; margin-bottom:8px;">README.md</span>
+        <span class="mono" style="color:var(--ink-dim); font-size:14.5px; display:block; margin-bottom:8px;">docs/CLIENTS.md</span>
+        <span class="mono" style="color:var(--ink-dim); font-size:14.5px; display:block;">internal/tools/*.go</span>
+      </div>
+    </div>
+    <div class="footer-note">
+      iaas MCP server &#183; Streamable-HTTP, stateless &#183; 285 tools (223 user + 62 curated admin) &#183; Bearer pass-through &#183; this page ships with zero external requests
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- theme toggle ---------- */
+  var root = document.documentElement;
+  var stored = null;
+  try { stored = localStorage.getItem("iaas-mcp-theme"); } catch (e) {}
+  if (stored === "dark" || stored === "light") root.setAttribute("data-theme", stored);
+
+  var toggle = document.getElementById("theme-toggle");
+  function isDark(){
+    var t = root.getAttribute("data-theme");
+    if (t) return t === "dark";
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function paintToggle(){ if (toggle) toggle.textContent = isDark() ? "☾" : "☀"; }
+  paintToggle();
+  if (toggle) {
+    toggle.addEventListener("click", function(){
+      var next = isDark() ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("iaas-mcp-theme", next); } catch (e) {}
+      paintToggle();
+    });
+  }
+
+  /* ---------- copy-to-clipboard ---------- */
+  function flash(btn){
+    var orig = btn.textContent;
+    btn.textContent = "copied";
+    btn.classList.add("copied");
+    setTimeout(function(){ btn.textContent = orig; btn.classList.remove("copied"); }, 1400);
+  }
+  var copyButtons = document.querySelectorAll(".copy");
+  for (var i = 0; i < copyButtons.length; i++) {
+    (function(btn){
+      btn.addEventListener("click", function(){
+        var codeEl = btn.parentElement ? btn.parentElement.querySelector("code") : null;
+        var text = codeEl ? codeEl.textContent : "";
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function(){ flash(btn); })["catch"](function(){});
+        } else {
+          flash(btn);
+        }
+      });
+    })(copyButtons[i]);
+  }
+
+  /* ---------- catalog filter ---------- */
+  var searchInput = document.getElementById("catalog-search");
+  var chips = document.querySelectorAll(".chip");
+  var groupSections = document.querySelectorAll(".group");
+  var allCards = document.querySelectorAll(".card");
+  var countEl = document.getElementById("catalog-count");
+  var noResults = document.getElementById("no-results");
+  var activeGroup = "all";
+
+  function applyFilter(){
+    var q = (searchInput && searchInput.value ? searchInput.value : "").trim().toLowerCase();
+    var visible = 0;
+
+    for (var s = 0; s < groupSections.length; s++) {
+      var section = groupSections[s];
+      var cards = section.querySelectorAll(".card");
+      var sectionVisible = 0;
+
+      for (var c = 0; c < cards.length; c++) {
+        var card = cards[c];
+        var matchesGroup = activeGroup === "all" || card.getAttribute("data-group") === activeGroup;
+        var haystack = card.getAttribute("data-search") || "";
+        var matchesQuery = !q || haystack.indexOf(q) !== -1;
+        var show = matchesGroup && matchesQuery;
+        card.style.display = show ? "" : "none";
+        if (show) { sectionVisible++; visible++; }
+      }
+      section.style.display = sectionVisible ? "" : "none";
+    }
+
+    if (countEl) countEl.textContent = "Showing " + visible + " of " + allCards.length + " families";
+    if (noResults) noResults.style.display = visible === 0 ? "block" : "none";
+  }
+
+  if (searchInput) searchInput.addEventListener("input", applyFilter);
+  for (var g = 0; g < chips.length; g++) {
+    (function(chip){
+      chip.addEventListener("click", function(){
+        for (var k = 0; k < chips.length; k++) chips[k].classList.remove("is-active");
+        chip.classList.add("is-active");
+        activeGroup = chip.getAttribute("data-group");
+        applyFilter();
+      });
+    })(chips[g]);
+  }
+
+  applyFilter();
+})();
+</script>
+
+</body>
+</html>
