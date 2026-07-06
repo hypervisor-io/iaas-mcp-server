@@ -218,6 +218,7 @@ type DeleteK8sSgRuleInput struct {
 	ClusterID string `json:"cluster_id" jsonschema:"UUID of the cluster"`
 	Scope     string `json:"scope" jsonschema:"lb, cp, or worker"`
 	RuleID    string `json:"rule_id" jsonschema:"UUID of the rule to delete"`
+	Confirmation
 	Idempotent
 }
 
@@ -602,7 +603,11 @@ func registerKubernetesTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.kubernetes_security_group_rule.create", Description: "Add a security group rule to a cluster scope (lb, cp, or worker)."}, createK8sSgRule)
 	Register(s, deps, Spec{Name: "user.kubernetes_security_group_rule.list", Description: "List a cluster scope's security group rules."}, listK8sSgRules)
 	Register(s, deps, Spec{Name: "user.kubernetes_security_group_rule.get", Description: "Get a cluster security group rule by UUID."}, getK8sSgRule)
-	Register(s, deps, Spec{Name: "user.kubernetes_security_group_rule.delete", Description: "Delete a cluster security group rule."}, deleteK8sSgRule)
+	Register(s, deps, Spec{
+		Name:        "user.kubernetes_security_group_rule.delete",
+		Description: "Delete a cluster security group rule. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, deleteK8sSgRule)
 
 	// Data sources.
 	Register(s, deps, Spec{Name: "user.kubernetes_cluster.kubeconfig", Description: "Download a cluster's kubeconfig (YAML, sensitive)."}, getKubeconfig)

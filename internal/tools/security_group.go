@@ -53,6 +53,7 @@ type AddSecurityGroupRuleInput struct {
 type RemoveSecurityGroupRuleInput struct {
 	SecurityGroupID string `json:"security_group_id" jsonschema:"UUID of the security group"`
 	RuleID          string `json:"rule_id" jsonschema:"UUID of the rule to remove"`
+	Confirmation
 }
 
 type SecurityGroupInstancesInput struct {
@@ -196,7 +197,8 @@ func registerSecurityGroupTools(s *mcp.Server, deps Deps) {
 
 	Register(s, deps, Spec{
 		Name:        "user.security_group.remove_rule",
-		Description: "Remove a single firewall rule from a security group by rule UUID.",
+		Description: "Remove a single firewall rule from a security group by rule UUID. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
 	}, removeSecurityGroupRule)
 
 	Register(s, deps, Spec{

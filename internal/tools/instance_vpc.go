@@ -40,6 +40,15 @@ type InstanceVpcIPInput struct {
 	VpcIPID    string `json:"vpc_ip_id" jsonschema:"UUID of the attached VPC IP row"`
 }
 
+// RemoveInstanceVpcIPInput mirrors InstanceVpcIPInput but embeds Confirmation,
+// so the confirm gate applies to remove_ip (destructive) but not to
+// set_primary_ip (reversible), which shares the plain InstanceVpcIPInput.
+type RemoveInstanceVpcIPInput struct {
+	InstanceID string `json:"instance_id" jsonschema:"UUID of the instance"`
+	VpcIPID    string `json:"vpc_ip_id" jsonschema:"UUID of the attached VPC IP row to remove"`
+	Confirmation
+}
+
 type VpcIPResult struct {
 	VpcIP map[string]any `json:"vpc_ip"`
 }
@@ -96,7 +105,7 @@ func setPrimaryInstanceVpcIP(ctx context.Context, cl *client.Client, in Instance
 	return okResult("primary vpc ip set"), nil
 }
 
-func removeInstanceVpcIP(ctx context.Context, cl *client.Client, in InstanceVpcIPInput) (OKResult, error) {
+func removeInstanceVpcIP(ctx context.Context, cl *client.Client, in RemoveInstanceVpcIPInput) (OKResult, error) {
 	if err := cl.RemoveInstanceVpcIP(ctx, in.InstanceID, in.VpcIPID); err != nil {
 		return OKResult{}, err
 	}
@@ -126,6 +135,7 @@ func registerInstanceVpcTools(s *mcp.Server, deps Deps) {
 	}, setPrimaryInstanceVpcIP)
 	Register(s, deps, Spec{
 		Name:        "user.instance_vpc.remove_ip",
-		Description: "Remove an attached VPC IP from an instance (cannot remove the last one).",
+		Description: "Remove an attached VPC IP from an instance (cannot remove the last one). DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
 	}, removeInstanceVpcIP)
 }

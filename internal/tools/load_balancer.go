@@ -146,6 +146,29 @@ type LBRuleRef struct {
 	RuleID         string `json:"rule_id" jsonschema:"UUID of the rule"`
 }
 
+// Delete-specific inputs. These mirror the *Ref structs but embed Confirmation,
+// so the confirm gate applies only to the destructive delete tools and not to
+// the read (get) tools that share the plain *Ref structs.
+type LBChildDeleteInput struct {
+	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
+	ChildID        string `json:"child_id" jsonschema:"UUID of the child resource to delete"`
+	Confirmation
+}
+
+type LBTargetDeleteInput struct {
+	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
+	BackendID      string `json:"backend_id" jsonschema:"UUID of the parent backend"`
+	TargetID       string `json:"target_id" jsonschema:"UUID of the target to delete"`
+	Confirmation
+}
+
+type LBRuleDeleteInput struct {
+	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
+	FrontendID     string `json:"frontend_id" jsonschema:"UUID of the parent frontend"`
+	RuleID         string `json:"rule_id" jsonschema:"UUID of the rule to delete"`
+	Confirmation
+}
+
 type LBFrontendResult struct {
 	Frontend map[string]any `json:"frontend"`
 }
@@ -284,7 +307,7 @@ func updateLBFrontend(ctx context.Context, cl *client.Client, in UpdateLBFronten
 	return LBFrontendResult{Frontend: obj}, nil
 }
 
-func deleteLBFrontend(ctx context.Context, cl *client.Client, in LBChildRef) (DeleteResult, error) {
+func deleteLBFrontend(ctx context.Context, cl *client.Client, in LBChildDeleteInput) (DeleteResult, error) {
 	if err := cl.DeleteLBFrontend(ctx, in.LoadBalancerID, in.ChildID); err != nil {
 		return DeleteResult{}, err
 	}
@@ -316,7 +339,7 @@ func getLBBackend(ctx context.Context, cl *client.Client, in LBChildRef) (LBBack
 	return LBBackendResult{Backend: obj}, nil
 }
 
-func deleteLBBackend(ctx context.Context, cl *client.Client, in LBChildRef) (DeleteResult, error) {
+func deleteLBBackend(ctx context.Context, cl *client.Client, in LBChildDeleteInput) (DeleteResult, error) {
 	if err := cl.DeleteLBBackend(ctx, in.LoadBalancerID, in.ChildID); err != nil {
 		return DeleteResult{}, err
 	}
@@ -366,7 +389,7 @@ func updateLBTarget(ctx context.Context, cl *client.Client, in UpdateLBTargetInp
 	return LBTargetResult{Target: obj}, nil
 }
 
-func deleteLBTarget(ctx context.Context, cl *client.Client, in LBTargetRef) (DeleteResult, error) {
+func deleteLBTarget(ctx context.Context, cl *client.Client, in LBTargetDeleteInput) (DeleteResult, error) {
 	if err := cl.DeleteLBTarget(ctx, in.LoadBalancerID, in.BackendID, in.TargetID); err != nil {
 		return DeleteResult{}, err
 	}
@@ -395,7 +418,7 @@ func getLBCertificate(ctx context.Context, cl *client.Client, in LBChildRef) (LB
 	return LBCertificateResult{Certificate: obj}, nil
 }
 
-func deleteLBCertificate(ctx context.Context, cl *client.Client, in LBChildRef) (DeleteResult, error) {
+func deleteLBCertificate(ctx context.Context, cl *client.Client, in LBChildDeleteInput) (DeleteResult, error) {
 	if err := cl.DeleteLBCertificate(ctx, in.LoadBalancerID, in.ChildID); err != nil {
 		return DeleteResult{}, err
 	}
@@ -457,7 +480,7 @@ func updateLBRoutingRule(ctx context.Context, cl *client.Client, in UpdateLBRout
 	return LBRoutingRuleResult{Rule: obj}, nil
 }
 
-func deleteLBRoutingRule(ctx context.Context, cl *client.Client, in LBRuleRef) (DeleteResult, error) {
+func deleteLBRoutingRule(ctx context.Context, cl *client.Client, in LBRuleDeleteInput) (DeleteResult, error) {
 	if err := cl.DeleteLBRoutingRule(ctx, in.LoadBalancerID, in.FrontendID, in.RuleID); err != nil {
 		return DeleteResult{}, err
 	}
@@ -479,27 +502,47 @@ func registerLoadBalancerTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.load_balancer.frontend_create", Description: "Add a frontend (listener) to a load balancer."}, createLBFrontend)
 	Register(s, deps, Spec{Name: "user.load_balancer.frontend_get", Description: "Get a load balancer frontend."}, getLBFrontend)
 	Register(s, deps, Spec{Name: "user.load_balancer.frontend_update", Description: "Update a load balancer frontend."}, updateLBFrontend)
-	Register(s, deps, Spec{Name: "user.load_balancer.frontend_delete", Description: "Delete a load balancer frontend."}, deleteLBFrontend)
+	Register(s, deps, Spec{
+		Name:        "user.load_balancer.frontend_delete",
+		Description: "Delete a load balancer frontend. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, deleteLBFrontend)
 
 	// Backends.
 	Register(s, deps, Spec{Name: "user.load_balancer.backend_create", Description: "Add a backend pool to a load balancer."}, createLBBackend)
 	Register(s, deps, Spec{Name: "user.load_balancer.backend_get", Description: "Get a load balancer backend."}, getLBBackend)
-	Register(s, deps, Spec{Name: "user.load_balancer.backend_delete", Description: "Delete a load balancer backend."}, deleteLBBackend)
+	Register(s, deps, Spec{
+		Name:        "user.load_balancer.backend_delete",
+		Description: "Delete a load balancer backend. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, deleteLBBackend)
 
 	// Targets.
 	Register(s, deps, Spec{Name: "user.load_balancer.target_create", Description: "Add a target to a backend."}, createLBTarget)
 	Register(s, deps, Spec{Name: "user.load_balancer.target_get", Description: "Get a backend target."}, getLBTarget)
 	Register(s, deps, Spec{Name: "user.load_balancer.target_update", Description: "Update a backend target's weight or enabled state."}, updateLBTarget)
-	Register(s, deps, Spec{Name: "user.load_balancer.target_delete", Description: "Delete a backend target."}, deleteLBTarget)
+	Register(s, deps, Spec{
+		Name:        "user.load_balancer.target_delete",
+		Description: "Delete a backend target. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, deleteLBTarget)
 
 	// Certificates.
 	Register(s, deps, Spec{Name: "user.load_balancer.certificate_create", Description: "Upload a TLS certificate to a load balancer."}, createLBCertificate)
 	Register(s, deps, Spec{Name: "user.load_balancer.certificate_get", Description: "Get a load balancer certificate."}, getLBCertificate)
-	Register(s, deps, Spec{Name: "user.load_balancer.certificate_delete", Description: "Delete a load balancer certificate."}, deleteLBCertificate)
+	Register(s, deps, Spec{
+		Name:        "user.load_balancer.certificate_delete",
+		Description: "Delete a load balancer certificate. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, deleteLBCertificate)
 
 	// Routing rules.
 	Register(s, deps, Spec{Name: "user.load_balancer.routing_rule_create", Description: "Add a routing rule to a frontend."}, createLBRoutingRule)
 	Register(s, deps, Spec{Name: "user.load_balancer.routing_rule_get", Description: "Get a frontend routing rule."}, getLBRoutingRule)
 	Register(s, deps, Spec{Name: "user.load_balancer.routing_rule_update", Description: "Update a frontend routing rule."}, updateLBRoutingRule)
-	Register(s, deps, Spec{Name: "user.load_balancer.routing_rule_delete", Description: "Delete a frontend routing rule."}, deleteLBRoutingRule)
+	Register(s, deps, Spec{
+		Name:        "user.load_balancer.routing_rule_delete",
+		Description: "Delete a frontend routing rule. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, deleteLBRoutingRule)
 }

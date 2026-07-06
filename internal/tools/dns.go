@@ -120,6 +120,7 @@ type DeleteDnsRecordInput struct {
 	ZoneID      string `json:"zone_id" jsonschema:"UUID of the parent DNS zone"`
 	RecordSetID string `json:"record_set_id" jsonschema:"UUID of the parent record set"`
 	RecordID    string `json:"record_id" jsonschema:"UUID of the record to delete"`
+	Confirmation
 }
 
 type DnsRecordResult struct {
@@ -332,5 +333,9 @@ func registerDNSTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.dns_record.create", Description: "Create a DNS record in a record set."}, createDnsRecord)
 	Register(s, deps, Spec{Name: "user.dns_record.get", Description: "Get a DNS record by zone, record-set, and record UUID."}, getDnsRecord)
 	Register(s, deps, Spec{Name: "user.dns_record.update", Description: "Update a DNS record's value, weight, or enabled state."}, updateDnsRecord)
-	Register(s, deps, Spec{Name: "user.dns_record.delete", Description: "Delete a single DNS record."}, deleteDnsRecord)
+	Register(s, deps, Spec{
+		Name:        "user.dns_record.delete",
+		Description: "Delete a single DNS record. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, deleteDnsRecord)
 }

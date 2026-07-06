@@ -99,6 +99,7 @@ type UpdateAutoscalingPolicyInput struct {
 type DeleteAutoscalingPolicyInput struct {
 	GroupID  string `json:"group_id" jsonschema:"UUID of the parent scaling group"`
 	PolicyID string `json:"policy_id" jsonschema:"UUID of the policy to delete"`
+	Confirmation
 }
 
 type AutoscalingPolicyResult struct {
@@ -294,5 +295,9 @@ func registerAutoscalingTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.autoscaling_policy.create", Description: "Add a scaling policy to an autoscaling group."}, createAutoscalingPolicy)
 	Register(s, deps, Spec{Name: "user.autoscaling_policy.get", Description: "Get an autoscaling policy by group and policy UUID."}, getAutoscalingPolicy)
 	Register(s, deps, Spec{Name: "user.autoscaling_policy.update", Description: "Update an autoscaling policy's thresholds or steps."}, updateAutoscalingPolicy)
-	Register(s, deps, Spec{Name: "user.autoscaling_policy.delete", Description: "Delete an autoscaling policy."}, deleteAutoscalingPolicy)
+	Register(s, deps, Spec{
+		Name:        "user.autoscaling_policy.delete",
+		Description: "Delete an autoscaling policy. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, deleteAutoscalingPolicy)
 }

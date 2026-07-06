@@ -50,6 +50,7 @@ type BulkAddIPSetInput struct {
 type RemoveIPSetEntryInput struct {
 	IPSetID string `json:"ip_set_id" jsonschema:"UUID of the IP set"`
 	EntryID string `json:"entry_id" jsonschema:"UUID of the entry to remove"`
+	Confirmation
 }
 
 type IPSetResult struct {
@@ -171,6 +172,7 @@ func registerIPSetTools(s *mcp.Server, deps Deps) {
 
 	Register(s, deps, Spec{
 		Name:        "user.ip_set.remove_entry",
-		Description: "Remove a single CIDR entry from an IP set by entry UUID.",
+		Description: "Remove a single CIDR entry from an IP set by entry UUID. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
 	}, removeIPSetEntry)
 }

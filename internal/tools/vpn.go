@@ -78,6 +78,7 @@ type UpdateVpnPeerInput struct {
 type RemoveVpnPeerInput struct {
 	GatewayID string `json:"gateway_id" jsonschema:"UUID of the VPN gateway"`
 	PeerID    string `json:"peer_id" jsonschema:"UUID of the peer to remove"`
+	Confirmation
 }
 
 type VpnPeerResult struct {
@@ -103,6 +104,7 @@ type GetVpnPeeringInput struct {
 type DeleteVpnPeeringInput struct {
 	GatewayID string `json:"gateway_id" jsonschema:"UUID of the VPN gateway"`
 	PeeringID string `json:"peering_id" jsonschema:"UUID of the peering to delete"`
+	Confirmation
 }
 
 type VpnPeeringResult struct {
@@ -288,11 +290,19 @@ func registerVPNTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.vpn_gateway.add_peer", Description: "Add a peer (road_warrior or site_to_site) to a VPN gateway."}, addVpnPeer)
 	Register(s, deps, Spec{Name: "user.vpn_gateway.get_peer", Description: "Get a VPN peer by gateway and peer UUID."}, getVpnPeer)
 	Register(s, deps, Spec{Name: "user.vpn_gateway.update_peer", Description: "Update a VPN peer's fields."}, updateVpnPeer)
-	Register(s, deps, Spec{Name: "user.vpn_gateway.remove_peer", Description: "Remove a peer from a VPN gateway."}, removeVpnPeer)
+	Register(s, deps, Spec{
+		Name:        "user.vpn_gateway.remove_peer",
+		Description: "Remove a peer from a VPN gateway. DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, removeVpnPeer)
 	Register(s, deps, Spec{Name: "user.vpn_gateway.peer_config", Description: "Download a road_warrior peer's WireGuard config."}, getVpnPeerConfig)
 
 	// Peerings.
 	Register(s, deps, Spec{Name: "user.vpn_peering.create", Description: "Create a VPC-to-VPC VPN peering between two of your gateways."}, createVpnPeering)
 	Register(s, deps, Spec{Name: "user.vpn_peering.get", Description: "Get a VPN peering by gateway and peering UUID."}, getVpnPeering)
-	Register(s, deps, Spec{Name: "user.vpn_peering.delete", Description: "Delete a VPN peering (removes the local side)."}, deleteVpnPeering)
+	Register(s, deps, Spec{
+		Name:        "user.vpn_peering.delete",
+		Description: "Delete a VPN peering (removes the local side). DESTRUCTIVE: requires \"confirm\": true.",
+		Destructive: true,
+	}, deleteVpnPeering)
 }

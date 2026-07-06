@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -83,14 +84,22 @@ func Register[In, Out any](s *mcp.Server, deps Deps, spec Spec, fn Handler[In, O
 // enumerate a server's registered tools without a live client session, so
 // RegisteredToolNames captures each name at registration through this hook. It
 // is nil in normal operation (production RegisterAll records nothing).
+//
+// The field is an atomic.Pointer, not a plain var behind recorderMu, on purpose:
+// RegisteredToolNames holds recorderMu for the whole RegisterAll it drives, and
+// RegisterAll calls recordToolName synchronously, so a mutex in recordToolName
+// would re-enter recorderMu and deadlock. The atomic makes recordToolName's read
+// and RegisteredToolNames' set/clear race-free without any lock (verified under
+// go test -race). recorderMu still serializes concurrent RegisteredToolNames
+// callers so their name slices never interleave.
 var (
 	recorderMu       sync.Mutex
-	toolNameRecorder func(string)
+	toolNameRecorder atomic.Pointer[func(string)]
 )
 
 func recordToolName(name string) {
-	if toolNameRecorder != nil {
-		toolNameRecorder(name)
+	if fn := toolNameRecorder.Load(); fn != nil {
+		(*fn)(name)
 	}
 }
 
@@ -103,8 +112,9 @@ func RegisteredToolNames() []string {
 	defer recorderMu.Unlock()
 
 	var names []string
-	toolNameRecorder = func(n string) { names = append(names, n) }
-	defer func() { toolNameRecorder = nil }()
+	fn := func(n string) { names = append(names, n) }
+	toolNameRecorder.Store(&fn)
+	defer toolNameRecorder.Store(nil)
 
 	RegisterAll(mcp.NewServer(&mcp.Implementation{Name: "trisync-enum", Version: "test"}, nil), Deps{})
 	return names
