@@ -13,10 +13,10 @@ jobs:
 
     steps:
       # go.mod pins the provider's client/ and waiter/ packages by a normal
-      # `require` (a pseudo-version of the public hypervisor-io/terraform-provider-iaas
-      # module). The dependency is fetched from the module proxy like any other -
-      # no sibling checkout or org token needed. A tagged provider release can
-      # replace the pseudo-version later (spec 17 Phase 0).
+      # `require` on a tagged release (v0.2.0) of the public
+      # hypervisor-io/terraform-provider-iaas module. The dependency is fetched
+      # from the module proxy like any other - no sibling checkout or org token
+      # needed (spec 17 Phase 0).
       - name: Checkout
         uses: actions/checkout@v4
 
