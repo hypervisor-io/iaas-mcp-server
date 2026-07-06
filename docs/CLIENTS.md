@@ -6,22 +6,23 @@ must carry `Authorization: Bearer <platform-api-token>` (see
 reachable at `https://mcp.example.com/mcp` and your token is in `$IAAS_API_TOKEN`.
 Never paste a real token into a config you commit.
 
-## claude.ai custom connector (remote MCP)
+## Remote connector (hosted MCP client)
 
-In claude.ai, add a custom connector pointing at the server's `/mcp` URL and supply the
-Authorization header:
+In any MCP client that supports remote (Streamable-HTTP) connectors, add a custom
+connector pointing at the server's `/mcp` URL and supply the Authorization header:
 
 - **URL:** `https://mcp.example.com/mcp`
 - **Header:** `Authorization: Bearer <your platform API token>`
 
-The connector then lists the tools and lets Claude call them. Use a **user** token for
+The connector then lists the tools and lets the agent call them. Use a **user** token for
 `user.*` tools, or an **admin** token (IP-locked; the server's egress IP must be
 registered) to also reach `admin.*` tools.
 
-## Claude Desktop (via the mcp-remote bridge)
+## Stdio-only client (via the mcp-remote bridge)
 
-Claude Desktop launches MCP servers as local processes, so bridge to the remote
-Streamable-HTTP endpoint with `mcp-remote`. In `claude_desktop_config.json`:
+Some MCP clients launch servers only as local stdio processes. Bridge them to the remote
+Streamable-HTTP endpoint with `mcp-remote`. In the client's MCP server config (a stdio
+server entry):
 
 ```json
 {

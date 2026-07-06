@@ -11,8 +11,8 @@ same tested API client as the OpenTofu provider.
 
 ---
 
-`iaas-mcp-server` lets an AI agent (Claude Desktop, the claude.ai connector, or any
-MCP client) manage real infrastructure on the Hypervisor.io platform: create and
+`iaas-mcp-server` lets an AI agent (any MCP client - hosted connector, IDE
+extension, or stdio bridge) manage real infrastructure on the Hypervisor.io platform: create and
 manage instances, VPCs and subnets, Kubernetes clusters, managed databases, load
 balancers, DNS, VPNs, object storage, volumes, autoscaling, and more. It speaks the
 modern **Streamable-HTTP** MCP transport in **stateless** mode, so any request lands
@@ -142,8 +142,8 @@ fleet-wide-risk operations.
 
 ## Clients
 
-See [`docs/CLIENTS.md`](docs/CLIENTS.md) for copy-paste configs (Claude Desktop /
-claude.ai connector, generic `mcp.json`), a `curl` smoke test, and a first-task
+See [`docs/CLIENTS.md`](docs/CLIENTS.md) for copy-paste configs (remote connector,
+stdio bridge, generic `mcp.json`), a `curl` smoke test, and a first-task
 walkthrough.
 
 ## Tri-sync
