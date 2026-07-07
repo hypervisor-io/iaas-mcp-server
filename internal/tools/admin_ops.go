@@ -62,7 +62,23 @@ func registerAdminOpsTools(s *mcp.Server, deps Deps) {
 		})
 
 	// System logs (read).
-	Register(s, deps, Spec{Name: "admin.system.admin_logs", Description: "List admin audit logs (admin).", Admin: true},
+	//
+	// admin_logs carries NO filter input schema: the underlying client call
+	// (AdminGetAdminLogs -> doList, github.com/hypervisor-io/terraform-provider-iaas
+	// client, a published/tagged dependency of this module, not a local
+	// path) takes no query parameters at all and always auto-paginates the
+	// full result set. The Master admin API gained several optional list
+	// filters (search, from/to, user_id, action prefix, resource_type,
+	// ip_address, target_user_id, guard, status) plus a nested target_user
+	// object per row, but wiring real filtering into this tool would mean
+	// either (a) reimplementing Master's filter semantics a second time in
+	// Go against the already-fully-fetched rows (a drift risk the Master
+	// side explicitly guards against with its own web/API equivalence
+	// tests), or (b) extending the vendored client package, which requires
+	// a new tagged terraform-provider-iaas release + a go.mod bump - out of
+	// scope for this tool. So only the description is updated (documenting
+	// the current response shape); no input fields were added.
+	Register(s, deps, Spec{Name: "admin.system.admin_logs", Description: "List admin audit logs (admin); returns the full log (no filter params - fetches all pages). Each row now includes a nested target_user {id, email} for the affected customer account, when resolved. For a filtered/bounded export, use the Master admin panel's CSV export instead.", Admin: true},
 		func(ctx context.Context, cl *client.Client, _ EmptyInput) (AdminListResult, error) {
 			return adminList(cl.AdminGetAdminLogs(ctx))
 		})
