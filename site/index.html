@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>iaas MCP server - Model Context Protocol for the IaaS platform</title>
-<meta name="description" content="A remote, stateless Streamable-HTTP MCP server that exposes the Hypervisor.io IaaS platform to AI agents: 364 tools (302 user + 62 curated admin) over the platform REST API, backed by the same tested client as the OpenTofu provider.">
+<meta name="description" content="A remote, stateless Streamable-HTTP MCP server that exposes the Hypervisor.io IaaS platform to AI agents: 380 tools (309 user + 71 curated admin) over the platform REST API, backed by the same tested client as the OpenTofu provider.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23111535'/%3E%3Ctext x='32' y='42' font-family='monospace' font-size='30' font-weight='700' fill='%23818cf8' text-anchor='middle'%3E&gt;_%3C/text%3E%3C/svg%3E">
 <style>
 /* ============================================================
@@ -381,7 +381,7 @@ footer{ padding: 56px 0 70px; }
         <h1>Give an AI agent the <em>whole IaaS platform.</em></h1>
         <p class="hero-lede">
           <code class="mono">iaas-mcp-server</code> is a remote, stateless Streamable-HTTP MCP server
-          that exposes the Hypervisor.io platform to any MCP client. 364 tools cover instances, VPCs,
+          that exposes the Hypervisor.io platform to any MCP client. 380 tools cover instances, VPCs,
           Kubernetes, managed databases, load balancers, DNS, VPN, object storage and more, backed by the
           same tested API client as the <code class="mono">iaas</code> OpenTofu provider. Bearer
           pass-through auth, confirm-gated deletes, async convergence built in.
@@ -391,9 +391,9 @@ footer{ padding: 56px 0 70px; }
           <a class="btn btn-ghost" href="#tools">Browse the tools</a>
         </div>
         <div class="stat-row">
-          <div class="stat"><b>364</b><span>Tools</span></div>
-          <div class="stat"><b>302</b><span>User</span></div>
-          <div class="stat"><b>62</b><span>Admin (curated)</span></div>
+          <div class="stat"><b>380</b><span>Tools</span></div>
+          <div class="stat"><b>309</b><span>User</span></div>
+          <div class="stat"><b>71</b><span>Admin (curated)</span></div>
         </div>
       </div>
       <div class="term">
@@ -413,7 +413,7 @@ footer{ padding: 56px 0 70px; }
 <span class="tok-com">    -H "Authorization: Bearer $IAAS_API_TOKEN" \</span>
 <span class="tok-com">    -H "Accept: application/json, text/event-stream" \</span>
 <span class="tok-com">    -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'</span>
-<span class="tok-flag">  &#8594; 364 tools  (302 user.* + 62 admin.*)</span>
+<span class="tok-flag">  &#8594; 380 tools  (309 user.* + 71 admin.*)</span>
 <span class="tok-add">  user.instance.create   user.vpc.attach_instance   ...</span></code></pre>
       </div>
     </div>
@@ -683,7 +683,7 @@ curl https://mcp.example.com/healthz    <span class="tok-com"># &#8594; ok</span
     <div class="wrap">
       <div class="eyebrow">Reference</div>
       <h2 class="section-title">Every tool family</h2>
-      <p class="lede">All 364 tools, named <code class="mono">user.&lt;family&gt;.&lt;action&gt;</code> and
+      <p class="lede">All 380 tools, named <code class="mono">user.&lt;family&gt;.&lt;action&gt;</code> and
         <code class="mono">admin.&lt;family&gt;.&lt;action&gt;</code>, grouped by domain. Search narrows by
         name or purpose; the chips narrow by group. Families backed by a platform task are tagged
         <span class="tag tag-new">ASYNC</span>.</p>
@@ -1127,7 +1127,7 @@ user.instance.delete { <span class="tok-str">"id"</span>: <span class="tok-str">
       </div>
     </div>
     <div class="footer-note">
-      iaas MCP server &#183; Streamable-HTTP, stateless &#183; 364 tools (302 user + 62 curated admin) &#183; Bearer pass-through &#183; this page ships with zero external requests
+      iaas MCP server &#183; Streamable-HTTP, stateless &#183; 380 tools (309 user + 71 curated admin) &#183; Bearer pass-through &#183; this page ships with zero external requests
     </div>
   </div>
 </footer>

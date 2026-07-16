@@ -35,5 +35,5 @@ root or `/docs`, which is why this uses the Actions workflow to publish the
 ## Updating the page
 
 Edit `index.html` and push. There is no build step; it is one HTML file. The
-headline tool counts (285 total, 223 user, 62 admin) and the tool families
+headline tool counts (380 total, 309 user, 71 admin) and the tool families
 mirror `internal/tools/`; keep them in step when the tool surface changes.

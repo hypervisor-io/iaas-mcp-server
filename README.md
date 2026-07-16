@@ -4,7 +4,7 @@
 
 **A remote, stateless Streamable-HTTP [MCP](https://modelcontextprotocol.io) server that exposes the Hypervisor.io cloud platform to AI agents.**
 
-364 tools (302 user + 62 curated admin) over the platform REST API, backed by the
+380 tools (309 user + 71 curated admin) over the platform REST API, backed by the
 same tested API client as the OpenTofu provider.
 
 </div>
