@@ -39,6 +39,8 @@ func TestConfirmGate_ChildResourceDeletes(t *testing.T) {
 		{"user.load_balancer.certificate_delete", map[string]any{"load_balancer_id": "lb-1", "child_id": "cert-1"}},
 		{"user.load_balancer.target_delete", map[string]any{"load_balancer_id": "lb-1", "backend_id": "be-1", "target_id": "tg-1"}},
 		{"user.load_balancer.routing_rule_delete", map[string]any{"load_balancer_id": "lb-1", "frontend_id": "fe-1", "rule_id": "rl-1"}},
+		{"user.instance.snapshot.rollback", map[string]any{"instance_id": "inst-1", "name": "snap-1"}},
+		{"user.instance.snapshot.delete", map[string]any{"instance_id": "inst-1", "name": "snap-1"}},
 	}
 
 	for _, tc := range cases {
