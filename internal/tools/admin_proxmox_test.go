@@ -141,7 +141,10 @@ func TestAdminProxmox_BackupJobs(t *testing.T) {
 			"storage":     "local",
 			"schedule":    "0 3 * * *",
 			"mode":        "snapshot",
-			"keep-daily":  float64(7),
+			"keep": map[string]any{
+				"keep_daily":  float64(7),
+				"keep_weekly": float64(4),
+			},
 		},
 	})
 	var item tools.AdminItemResult
@@ -152,8 +155,12 @@ func TestAdminProxmox_BackupJobs(t *testing.T) {
 	st.mu.Lock()
 	gotBody := st.lastBody
 	st.mu.Unlock()
-	if gotBody["storage"] != "local" || gotBody["keep-daily"] != float64(7) {
-		t.Errorf("backup_job.create body = %v, want the full data object round-tripped", gotBody)
+	gotKeep, isMap := gotBody["keep"].(map[string]any)
+	if !isMap {
+		t.Fatalf("backup_job.create body = %v, want a nested keep object", gotBody)
+	}
+	if gotBody["storage"] != "local" || gotKeep["keep_daily"] != float64(7) || gotKeep["keep_weekly"] != float64(4) {
+		t.Errorf("backup_job.create body = %v, want retention nested under keep.keep_daily/keep.keep_weekly", gotBody)
 	}
 
 	res = callTool(t, cs, "admin.backup_job.update", map[string]any{
@@ -219,7 +226,8 @@ func TestAdminProxmox_MigrateConfirmGate(t *testing.T) {
 	res = callTool(t, cs, "admin.instance.migrate", map[string]any{
 		"instance_id": "inst-1", "target_node": "pve-02",
 		"online": true, "bwlimit": float64(1024), "targetstorage": "local-lvm",
-		"migration_network": "10.10.0.0/24", "confirm": true,
+		"migration_network": "10.10.0.0/24", "with_local_disks": true, "with_conntrack_state": true,
+		"confirm": true,
 	})
 	var ok tools.OKResult
 	unmarshalResult(t, res, &ok)
@@ -234,7 +242,8 @@ func TestAdminProxmox_MigrateConfirmGate(t *testing.T) {
 		t.Fatalf("migrate with confirm hit the backend %d times, want 1", calls)
 	}
 	if gotBody["target_node"] != "pve-02" || gotBody["online"] != true || gotBody["bwlimit"] != float64(1024) ||
-		gotBody["targetstorage"] != "local-lvm" || gotBody["migration_network"] != "10.10.0.0/24" {
+		gotBody["targetstorage"] != "local-lvm" || gotBody["migration_network"] != "10.10.0.0/24" ||
+		gotBody["with_local_disks"] != true || gotBody["with_conntrack_state"] != true {
 		t.Errorf("migrate body = %v, want all options posted through", gotBody)
 	}
 }

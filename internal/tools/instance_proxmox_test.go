@@ -63,12 +63,14 @@ func instanceProxmoxMock(st *instanceProxmoxMockState) http.Handler {
 	})
 
 	// GET /instance/{id}/guest-ips -> {"success":true,"data":[...]}, the generic
-	// envelope doList unwraps.
+	// envelope doList unwraps. The Master's GuestAgentService normalizes the raw
+	// QEMU guest-agent response into this flatter per-interface shape before
+	// returning it to API consumers.
 	mux.HandleFunc("GET /instance/{id}/guest-ips", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"success": true,
 			"data": []any{
-				map[string]any{"name": "eth0", "ip-addresses": []any{map[string]any{"ip-address": "10.0.0.5"}}},
+				map[string]any{"nic": "eth0", "mac": "aa:bb", "ip": "203.0.113.9", "type": "ipv4"},
 			},
 		})
 	})
@@ -188,8 +190,8 @@ func TestInstanceProxmox_GuestIPs(t *testing.T) {
 	if out.Count != 1 || len(out.Interfaces) != 1 {
 		t.Fatalf("guest_ips = %+v, want count 1", out)
 	}
-	if out.Interfaces[0]["name"] != "eth0" {
-		t.Errorf("interfaces[0].name = %v, want eth0", out.Interfaces[0]["name"])
+	if out.Interfaces[0]["nic"] != "eth0" || out.Interfaces[0]["ip"] != "203.0.113.9" {
+		t.Errorf("interfaces[0] = %v, want nic=eth0 ip=203.0.113.9", out.Interfaces[0])
 	}
 }
 

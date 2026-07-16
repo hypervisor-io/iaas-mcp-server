@@ -147,11 +147,11 @@ func registerInstanceProxmoxTools(s *mcp.Server, deps Deps) {
 	}, listInstanceSnapshots)
 	Register(s, deps, Spec{
 		Name:        "user.instance.snapshot.create",
-		Description: "Create a PVE VM snapshot, optionally including the VM's RAM state.",
+		Description: "Create a PVE VM snapshot, optionally including the VM's RAM state. The underlying Proxmox API also accepts a free-text description field, which this tool deliberately omits from its input schema.",
 	}, createInstanceSnapshot)
 	Register(s, deps, Spec{
 		Name:        "user.instance.snapshot.rollback",
-		Description: "Roll the instance back to a snapshot, discarding disk state written since it was taken. DESTRUCTIVE: requires \"confirm\": true.",
+		Description: "Roll the instance back to a snapshot, discarding disk state written since it was taken. The underlying Proxmox API also accepts a start flag to start the VM after rollback, which this tool deliberately omits from its input schema. DESTRUCTIVE: requires \"confirm\": true.",
 		Destructive: true,
 	}, rollbackInstanceSnapshot)
 	Register(s, deps, Spec{

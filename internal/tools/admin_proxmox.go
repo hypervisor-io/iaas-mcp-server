@@ -68,7 +68,7 @@ type AdminBackupJobListInput struct {
 // keep-* retention fields), passed through as-is.
 type AdminBackupJobCreateInput struct {
 	GroupID string         `json:"group_id" jsonschema:"UUID of the hypervisor group"`
-	Data    map[string]any `json:"data" jsonschema:"backup job fields: schedule, target_type/target_value, storage, mode, compress, enabled, comment, keep-* retention counts"`
+	Data    map[string]any `json:"data" jsonschema:"backup job definition: schedule, selection mode, and retention as a nested keep object, e.g. {\"schedule\":\"02:00\",\"mode\":\"all\",\"keep\":{\"keep_daily\":7,\"keep_weekly\":4}}"`
 }
 
 // AdminBackupJobUpdateInput updates an existing PVE-native backup job. Data
@@ -77,7 +77,7 @@ type AdminBackupJobCreateInput struct {
 type AdminBackupJobUpdateInput struct {
 	GroupID string         `json:"group_id" jsonschema:"UUID of the hypervisor group"`
 	JobID   string         `json:"job_id" jsonschema:"ID of the backup job"`
-	Data    map[string]any `json:"data" jsonschema:"backup job fields to update (all optional)"`
+	Data    map[string]any `json:"data" jsonschema:"backup job definition fields to update (all optional): schedule, selection mode, and retention as a nested keep object, e.g. {\"schedule\":\"02:00\",\"mode\":\"all\",\"keep\":{\"keep_daily\":7,\"keep_weekly\":4}}"`
 }
 
 // AdminBackupJobDeleteInput deletes a PVE-native backup job. Confirmation is
@@ -123,12 +123,14 @@ type AdminMigratePrecheckInput struct {
 // possibly customer-facing VM between physical hosts), so it requires
 // explicit human confirmation like any other D3 high-risk admin mutation.
 type AdminMigrateInput struct {
-	InstanceID       string   `json:"instance_id" jsonschema:"UUID of the instance to migrate"`
-	TargetNode       string   `json:"target_node" jsonschema:"destination PVE node"`
-	Online           *bool    `json:"online,omitempty" jsonschema:"optional: live-migrate without stopping the VM"`
-	Bwlimit          *float64 `json:"bwlimit,omitempty" jsonschema:"optional bandwidth limit in KiB/s"`
-	TargetStorage    string   `json:"targetstorage,omitempty" jsonschema:"optional destination storage (defaults to the same storage id on the target node)"`
-	MigrationNetwork string   `json:"migration_network,omitempty" jsonschema:"optional CIDR to route migration traffic over"`
+	InstanceID         string   `json:"instance_id" jsonschema:"UUID of the instance to migrate"`
+	TargetNode         string   `json:"target_node" jsonschema:"destination PVE node"`
+	Online             *bool    `json:"online,omitempty" jsonschema:"optional: live-migrate without stopping the VM"`
+	Bwlimit            *float64 `json:"bwlimit,omitempty" jsonschema:"optional bandwidth limit in KiB/s"`
+	TargetStorage      string   `json:"targetstorage,omitempty" jsonschema:"optional destination storage (defaults to the same storage id on the target node)"`
+	MigrationNetwork   string   `json:"migration_network,omitempty" jsonschema:"optional CIDR to route migration traffic over"`
+	WithLocalDisks     *bool    `json:"with_local_disks,omitempty" jsonschema:"optional: migrate local disks along with the VM"`
+	WithConntrackState *bool    `json:"with_conntrack_state,omitempty" jsonschema:"optional: migrate the firewall conntrack state (online migration, PVE >= 9 only)"`
 	Confirmation
 }
 
@@ -151,6 +153,12 @@ func adminMigrateInstance(ctx context.Context, cl *client.Client, in AdminMigrat
 	}
 	if in.MigrationNetwork != "" {
 		opts["migration_network"] = in.MigrationNetwork
+	}
+	if in.WithLocalDisks != nil {
+		opts["with_local_disks"] = *in.WithLocalDisks
+	}
+	if in.WithConntrackState != nil {
+		opts["with_conntrack_state"] = *in.WithConntrackState
 	}
 	if _, err := cl.AdminMigrateInstance(ctx, in.InstanceID, opts); err != nil {
 		return OKResult{}, err
