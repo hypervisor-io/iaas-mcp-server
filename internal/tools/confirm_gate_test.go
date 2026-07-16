@@ -41,6 +41,8 @@ func TestConfirmGate_ChildResourceDeletes(t *testing.T) {
 		{"user.load_balancer.routing_rule_delete", map[string]any{"load_balancer_id": "lb-1", "frontend_id": "fe-1", "rule_id": "rl-1"}},
 		{"user.instance.snapshot.rollback", map[string]any{"instance_id": "inst-1", "name": "snap-1"}},
 		{"user.instance.snapshot.delete", map[string]any{"instance_id": "inst-1", "name": "snap-1"}},
+		{"admin.backup_job.delete", map[string]any{"group_id": "grp-1", "job_id": "job-1"}},
+		{"admin.instance.migrate", map[string]any{"instance_id": "inst-1", "target_node": "pve-02"}},
 	}
 
 	for _, tc := range cases {
