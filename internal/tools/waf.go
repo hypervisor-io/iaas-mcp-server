@@ -21,7 +21,7 @@ import (
 // those are global settings, not per-policy.
 
 func init() {
-	toolRegistrars = append(toolRegistrars, registerWafTools)
+	toolRegistrars = append(toolRegistrars, registerWafTools, registerAdminWafTools)
 }
 
 // Policy is omitempty: the SDK auto-generates the tool's output JSON schema
@@ -308,4 +308,170 @@ func exportWafEvents(ctx context.Context, cl *client.Client, in ExportWafEventsI
 		return WafExportResult{}, err
 	}
 	return WafExportResult{DownloadURL: u}, nil
+}
+
+// Admin WAF tools (S6 Task 4, spec 17 decision D3: a CURATED safe allowlist
+// over the admin api/v1 surface - manifest entries 10-18). Reuses every
+// input/output type already declared above for the user.* tools (the wire
+// shapes are identical - the admin controller is a structural mirror of
+// UserApi\LbWafController) and the client's Admin* methods (client/lb_waf.go),
+// which target the admin api/v1 base path instead of the user path.
+//
+// Per D3, destructive admin ops are NOT exposed: DELETE policy
+// (admin.load_balancer.waf.disable_policy) and DELETE rule
+// (admin.load_balancer.waf.delete_rule) have no tool here - manifest entries
+// 12 and 16 are mcp.status="excluded" with reason "destructive admin op
+// excluded from the D3 safe allowlist". AdminDeleteLBWafPolicy/
+// AdminDeleteLBWafRule client methods were deliberately not added either
+// (see client/lb_waf.go's admin-section docblock) - there is nothing here to
+// call them.
+
+func adminGetWafPolicy(ctx context.Context, cl *client.Client, in GetWafPolicyInput) (WafPolicyResult, error) {
+	obj, err := cl.AdminGetLBWafPolicy(ctx, in.LoadBalancerID)
+	if err != nil {
+		if client.IsNotFound(err) {
+			return WafPolicyResult{Policy: nil}, nil
+		}
+		return WafPolicyResult{}, err
+	}
+	return WafPolicyResult{Policy: obj}, nil
+}
+
+func adminSetWafPolicy(ctx context.Context, cl *client.Client, in SetWafPolicyInput) (WafPolicyResult, error) {
+	body := map[string]any{"enabled": in.Enabled, "mode": in.Mode}
+	if in.FailMode != "" {
+		body["fail_mode"] = in.FailMode
+	}
+	if in.Sensitivity != nil {
+		body["sensitivity"] = *in.Sensitivity
+	}
+	if in.ResponseInspection != nil {
+		body["response_inspection"] = *in.ResponseInspection
+	}
+	if in.CrsEnabled != nil {
+		body["crs_enabled"] = *in.CrsEnabled
+	}
+	if in.FullAudit != nil {
+		body["full_audit"] = *in.FullAudit
+	}
+	if in.Exclusions != nil {
+		body["exclusions"] = in.Exclusions
+	}
+	obj, err := cl.AdminPutLBWafPolicy(ctx, in.LoadBalancerID, body)
+	if err != nil {
+		return WafPolicyResult{}, err
+	}
+	return WafPolicyResult{Policy: obj}, nil
+}
+
+func adminListWafRules(ctx context.Context, cl *client.Client, in ListWafRulesInput) (ItemsResult, error) {
+	return itemsResult(cl.AdminListLBWafRules(ctx, in.LoadBalancerID))
+}
+
+func adminCreateWafRule(ctx context.Context, cl *client.Client, in CreateWafRuleInput) (RuleResult, error) {
+	body := map[string]any{"name": in.Name}
+	if in.RuleID != nil {
+		body["rule_id"] = *in.RuleID
+	}
+	if in.Enabled != nil {
+		body["enabled"] = *in.Enabled
+	}
+	if in.RawSeclang != "" {
+		body["raw_seclang"] = in.RawSeclang
+	}
+	if in.Target != "" {
+		body["target"] = in.Target
+	}
+	if in.Operator != "" {
+		body["operator"] = in.Operator
+	}
+	if in.MatchValue != "" {
+		body["match_value"] = in.MatchValue
+	}
+	if in.Action != "" {
+		body["action"] = in.Action
+	}
+	if in.Priority != nil {
+		body["priority"] = *in.Priority
+	}
+	obj, err := cl.AdminCreateLBWafRule(ctx, in.LoadBalancerID, body)
+	if err != nil {
+		return RuleResult{}, err
+	}
+	return RuleResult{Rule: obj}, nil
+}
+
+func adminUpdateWafRule(ctx context.Context, cl *client.Client, in UpdateWafRuleInput) (RuleResult, error) {
+	body := map[string]any{}
+	if in.Name != "" {
+		body["name"] = in.Name
+	}
+	if in.Enabled != nil {
+		body["enabled"] = *in.Enabled
+	}
+	if in.RawSeclang != "" {
+		body["raw_seclang"] = in.RawSeclang
+	}
+	if in.Target != "" {
+		body["target"] = in.Target
+	}
+	if in.Operator != "" {
+		body["operator"] = in.Operator
+	}
+	if in.MatchValue != "" {
+		body["match_value"] = in.MatchValue
+	}
+	if in.Action != "" {
+		body["action"] = in.Action
+	}
+	if in.Priority != nil {
+		body["priority"] = *in.Priority
+	}
+	obj, err := cl.AdminUpdateLBWafRule(ctx, in.LoadBalancerID, in.RuleID, body)
+	if err != nil {
+		return RuleResult{}, err
+	}
+	return RuleResult{Rule: obj}, nil
+}
+
+func adminQueryWafEvents(ctx context.Context, cl *client.Client, in QueryWafEventsInput) (ItemsResult, error) {
+	filters := map[string]string{
+		"from": in.From, "to": in.To, "client_ip": in.ClientIP,
+		"rule_id": in.RuleID, "action": in.Action, "page": in.Page, "per_page": in.PerPage,
+	}
+	return itemsResult(cl.AdminQueryLBWafEvents(ctx, in.LoadBalancerID, filters))
+}
+
+func adminExportWafEvents(ctx context.Context, cl *client.Client, in ExportWafEventsInput) (WafExportResult, error) {
+	body := map[string]any{}
+	if in.From != "" {
+		body["from"] = in.From
+	}
+	if in.To != "" {
+		body["to"] = in.To
+	}
+	if in.ClientIP != "" {
+		body["client_ip"] = in.ClientIP
+	}
+	if in.RuleID != nil {
+		body["rule_id"] = *in.RuleID
+	}
+	if in.Action != "" {
+		body["action"] = in.Action
+	}
+	u, err := cl.AdminExportLBWafEvents(ctx, in.LoadBalancerID, body)
+	if err != nil {
+		return WafExportResult{}, err
+	}
+	return WafExportResult{DownloadURL: u}, nil
+}
+
+func registerAdminWafTools(s *mcp.Server, deps Deps) {
+	Register(s, deps, Spec{Name: "admin.load_balancer.waf.get_policy", Description: "Get the WAF policy of any load balancer, regardless of owner (admin).", Admin: true}, adminGetWafPolicy)
+	Register(s, deps, Spec{Name: "admin.load_balancer.waf.set_policy", Description: "Create or update the WAF policy of any load balancer and reload the appliance (admin).", Admin: true}, adminSetWafPolicy)
+	Register(s, deps, Spec{Name: "admin.load_balancer.waf.list_rules", Description: "List the custom WAF rules of any load balancer (admin).", Admin: true}, adminListWafRules)
+	Register(s, deps, Spec{Name: "admin.load_balancer.waf.create_rule", Description: "Create a custom WAF rule on any load balancer (rule_id must be 190000-199999) (admin).", Admin: true}, adminCreateWafRule)
+	Register(s, deps, Spec{Name: "admin.load_balancer.waf.update_rule", Description: "Update a custom WAF rule on any load balancer (admin).", Admin: true}, adminUpdateWafRule)
+	Register(s, deps, Spec{Name: "admin.load_balancer.waf.query_events", Description: "Query the WAF event log of any load balancer, regardless of owner (admin, paginated).", Admin: true}, adminQueryWafEvents)
+	Register(s, deps, Spec{Name: "admin.load_balancer.waf.export_events", Description: "Export the filtered WAF events of any load balancer to an archive and return a download URL (admin).", Admin: true}, adminExportWafEvents)
 }
