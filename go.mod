@@ -17,3 +17,11 @@ require (
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 )
+
+// TEMPORARY (S6 Task 1, spec 17 tri-sync): GetLBWafPolicy/PutLBWafPolicy/
+// DeleteLBWafPolicy are new client methods this task adds to the provider
+// repo and are not yet in any tagged release. Same pattern as commit
+// 4e61728 ("feat(tools): user proxmox tools..."): build against the sibling
+// checkout until the provider cuts its next tag, then re-pin (like commit
+// 5d772b4 did) and drop this line.
+replace github.com/hypervisor-io/terraform-provider-iaas => ../terraform-provider-iaas
