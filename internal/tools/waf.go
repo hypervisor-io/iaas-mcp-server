@@ -244,4 +244,68 @@ func registerWafTools(s *mcp.Server, deps Deps) {
 		Description: "Delete a custom WAF rule. DESTRUCTIVE: requires \"confirm\": true.",
 		Destructive: true,
 	}, deleteWafRule)
+	Register(s, deps, Spec{Name: "user.load_balancer.waf.query_events", Description: "Query the WAF event log of a load balancer (owner-scoped, paginated)."}, queryWafEvents)
+	Register(s, deps, Spec{Name: "user.load_balancer.waf.export_events", Description: "Export the filtered WAF events to an archive and return a download URL."}, exportWafEvents)
+}
+
+// Load balancer WAF event log tools (S6 Task 3, manifest entries 8-9). Reads
+// only - delegates to Master's owner-scoped LbWafLogService via the client's
+// QueryLBWafEvents/ExportLBWafEvents. Both endpoints are OpenTofu-excluded
+// (log/telemetry read + imperative export action, not declarative IaC state)
+// but MCP-covered, per api-manifest.json.
+
+type QueryWafEventsInput struct {
+	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
+	From           string `json:"from,omitempty" jsonschema:"ISO-8601 lower time bound"`
+	To             string `json:"to,omitempty" jsonschema:"ISO-8601 upper time bound"`
+	ClientIP       string `json:"client_ip,omitempty" jsonschema:"filter by client IP"`
+	RuleID         string `json:"rule_id,omitempty" jsonschema:"filter by matched rule id"`
+	Action         string `json:"action,omitempty" jsonschema:"logged or blocked"`
+	Page           string `json:"page,omitempty" jsonschema:"1-based page number"`
+	PerPage        string `json:"per_page,omitempty" jsonschema:"page size (max 200)"`
+}
+
+type ExportWafEventsInput struct {
+	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
+	From           string `json:"from,omitempty" jsonschema:"ISO-8601 lower time bound"`
+	To             string `json:"to,omitempty" jsonschema:"ISO-8601 upper time bound"`
+	ClientIP       string `json:"client_ip,omitempty" jsonschema:"filter by client IP"`
+	RuleID         *int   `json:"rule_id,omitempty" jsonschema:"filter by matched rule id"`
+	Action         string `json:"action,omitempty" jsonschema:"logged or blocked"`
+}
+
+type WafExportResult struct {
+	DownloadURL string `json:"download_url"`
+}
+
+func queryWafEvents(ctx context.Context, cl *client.Client, in QueryWafEventsInput) (ItemsResult, error) {
+	filters := map[string]string{
+		"from": in.From, "to": in.To, "client_ip": in.ClientIP,
+		"rule_id": in.RuleID, "action": in.Action, "page": in.Page, "per_page": in.PerPage,
+	}
+	return itemsResult(cl.QueryLBWafEvents(ctx, in.LoadBalancerID, filters))
+}
+
+func exportWafEvents(ctx context.Context, cl *client.Client, in ExportWafEventsInput) (WafExportResult, error) {
+	body := map[string]any{}
+	if in.From != "" {
+		body["from"] = in.From
+	}
+	if in.To != "" {
+		body["to"] = in.To
+	}
+	if in.ClientIP != "" {
+		body["client_ip"] = in.ClientIP
+	}
+	if in.RuleID != nil {
+		body["rule_id"] = *in.RuleID
+	}
+	if in.Action != "" {
+		body["action"] = in.Action
+	}
+	u, err := cl.ExportLBWafEvents(ctx, in.LoadBalancerID, body)
+	if err != nil {
+		return WafExportResult{}, err
+	}
+	return WafExportResult{DownloadURL: u}, nil
 }
