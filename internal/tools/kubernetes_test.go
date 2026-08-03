@@ -1,6 +1,7 @@
 package tools_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
@@ -49,6 +50,25 @@ func kubernetesMock() http.Handler {
 	})
 	mux.HandleFunc("GET /kubernetes/cluster/{id}/pools", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "pools": []any{map[string]any{"id": "pool-1", "name": "workers"}}})
+	})
+	mux.HandleFunc("POST /kubernetes/cluster/{id}/pool/{pid}/rotate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Idempotency-Key") == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "missing idempotency key"})
+			return
+		}
+		// Mirror the Master's downsize gate: without confirm_downsize=true the
+		// rotate is rejected 422 downsize_confirmation_required (this mock
+		// plays a pool whose plan change IS a downsize, so both tool branches
+		// are pinned).
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["confirm_downsize"] != true {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"errors": map[string]any{"confirm_downsize": []any{"downsize_confirmation_required"}},
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"task_id": "task-9"})
 	})
 	mux.HandleFunc("POST /kubernetes/cluster/{id}/security-group/{scope}", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "rule": map[string]any{"id": "sgr-1", "scope": r.PathValue("scope")}})
@@ -107,6 +127,30 @@ func TestKubernetes_ClusterConvergesAndChildren(t *testing.T) {
 	unmarshalResult(t, res, &kc)
 	if !strings.Contains(kc.YAML, "kind: Config") {
 		t.Errorf("kubeconfig = %q, want a kubeconfig", kc.YAML)
+	}
+}
+
+// TestKubernetes_NodePoolRotate pins both rotate branches against the mock's
+// downsize gate: without confirm_downsize the Master's 422
+// downsize_confirmation_required surfaces as a tool error the agent can act
+// on; with it, the async {task_id} comes back inside ObjectResult.
+func TestKubernetes_NodePoolRotate(t *testing.T) {
+	cs := connectSession(t, kubernetesMock())
+
+	res := callTool(t, cs, "user.kubernetes_node_pool.rotate", map[string]any{
+		"cluster_id": "k8s-1", "pool_id": "pool-1", "max_surge": 2,
+	})
+	if !res.IsError || !strings.Contains(resultText(t, res), "downsize_confirmation_required") {
+		t.Fatalf("rotate without confirm_downsize should surface the 422 gate; got %q", resultText(t, res))
+	}
+
+	res = callTool(t, cs, "user.kubernetes_node_pool.rotate", map[string]any{
+		"cluster_id": "k8s-1", "pool_id": "pool-1", "max_surge": 2, "confirm_downsize": true,
+	})
+	var rot tools.ObjectResult
+	unmarshalResult(t, res, &rot)
+	if rot.Object["task_id"] != "task-9" {
+		t.Errorf("rotate task_id = %v, want task-9", rot.Object["task_id"])
 	}
 }
 

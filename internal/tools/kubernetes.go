@@ -121,6 +121,7 @@ type ListK8sNodePoolsInput struct {
 type UpdateK8sNodePoolInput struct {
 	ClusterID          string           `json:"cluster_id" jsonschema:"UUID of the cluster"`
 	PoolID             string           `json:"pool_id" jsonschema:"UUID of the node pool"`
+	InstancePlanID     *string          `json:"instance_plan_id,omitempty" jsonschema:"UUID of the new node instance plan; persisting a change with live workers marks them stale — follow with user.kubernetes_node_pool.rotate to replace them"`
 	MinSize            *int             `json:"min_size,omitempty"`
 	MaxSize            *int             `json:"max_size,omitempty"`
 	TargetCount        *int             `json:"target_count,omitempty"`
@@ -128,6 +129,17 @@ type UpdateK8sNodePoolInput struct {
 	AutoscalingEnabled *bool            `json:"autoscaling_enabled,omitempty"`
 	Labels             map[string]any   `json:"labels,omitempty"`
 	Taints             []map[string]any `json:"taints,omitempty"`
+	Idempotent
+}
+
+// RotateK8sNodePoolInput mirrors POST /kubernetes/cluster/{id}/pool/{id}/rotate
+// (see client.RotateKubernetesNodePool for the full error contract).
+type RotateK8sNodePoolInput struct {
+	ClusterID        string `json:"cluster_id" jsonschema:"UUID of the cluster"`
+	PoolID           string `json:"pool_id" jsonschema:"UUID of the node pool"`
+	MaxSurge         *int   `json:"max_surge,omitempty" jsonschema:"replacement workers provisioned per wave (default 1)"`
+	DrainGracePeriod *int   `json:"drain_grace_period,omitempty" jsonschema:"seconds to wait after a replacement is ready before draining its predecessor (default 0)"`
+	ConfirmDownsize  *bool  `json:"confirm_downsize,omitempty" jsonschema:"required true when rotating onto a SMALLER plan — the server rejects 422 downsize_confirmation_required without it; pods may become unschedulable after a downsize"`
 	Idempotent
 }
 
@@ -409,6 +421,9 @@ func listK8sNodePools(ctx context.Context, cl *client.Client, in ListK8sNodePool
 
 func updateK8sNodePool(ctx context.Context, cl *client.Client, in UpdateK8sNodePoolInput) (K8sNodePoolResult, error) {
 	body := map[string]any{}
+	if in.InstancePlanID != nil {
+		body["instance_plan_id"] = *in.InstancePlanID
+	}
 	if in.MinSize != nil {
 		body["min_size"] = *in.MinSize
 	}
@@ -435,6 +450,27 @@ func updateK8sNodePool(ctx context.Context, cl *client.Client, in UpdateK8sNodeP
 		return K8sNodePoolResult{}, err
 	}
 	return K8sNodePoolResult{Pool: obj}, nil
+}
+
+// rotateK8sNodePool surge-replaces the pool's stale workers after an
+// instance-plan change. ASYNC — returns {task_id}; poll the pool/cluster for
+// convergence. A 422 downsize_confirmation_required error means the target
+// plan is smaller than a stale worker's: re-submit with confirm_downsize=true
+// only after the user has explicitly accepted that pods may become
+// unschedulable. Rotation shares the cluster op-lock with upgrades and scale
+// ops (409 op_locked) and burns the k8s_upgrade throttle bucket (3/hour).
+func rotateK8sNodePool(ctx context.Context, cl *client.Client, in RotateK8sNodePoolInput) (ObjectResult, error) {
+	body := map[string]any{}
+	if in.MaxSurge != nil {
+		body["max_surge"] = *in.MaxSurge
+	}
+	if in.DrainGracePeriod != nil {
+		body["drain_grace_period"] = *in.DrainGracePeriod
+	}
+	if in.ConfirmDownsize != nil {
+		body["confirm_downsize"] = *in.ConfirmDownsize
+	}
+	return objectResult(cl.RotateKubernetesNodePool(ctx, in.ClusterID, in.PoolID, body, IdempotencyKeyFromContext(ctx)))
 }
 
 func deleteK8sNodePool(ctx context.Context, cl *client.Client, in DeleteK8sNodePoolInput) (DeleteResult, error) {
@@ -582,7 +618,8 @@ func registerKubernetesTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.kubernetes_node_pool.create", Description: "Add a node pool to a cluster."}, createK8sNodePool)
 	Register(s, deps, Spec{Name: "user.kubernetes_node_pool.list", Description: "List a cluster's node pools."}, listK8sNodePools)
 	Register(s, deps, Spec{Name: "user.kubernetes_node_pool.get", Description: "Get a cluster node pool by UUID."}, getK8sNodePool)
-	Register(s, deps, Spec{Name: "user.kubernetes_node_pool.update", Description: "Update a node pool's sizing, weight, labels, or taints."}, updateK8sNodePool)
+	Register(s, deps, Spec{Name: "user.kubernetes_node_pool.update", Description: "Update a node pool's sizing, weight, labels, taints, or instance plan (a plan change with live workers marks them stale — follow with rotate)."}, updateK8sNodePool)
+	Register(s, deps, Spec{Name: "user.kubernetes_node_pool.rotate", Description: "Surge-replace a pool's stale workers onto its current instance plan. Async ({task_id}); downsizing requires confirm_downsize=true after the user accepts pods may become unschedulable."}, rotateK8sNodePool)
 	Register(s, deps, Spec{
 		Name:        "user.kubernetes_node_pool.delete",
 		Description: "Delete a node pool. DESTRUCTIVE: requires \"confirm\": true.",
