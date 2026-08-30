@@ -20,8 +20,8 @@ func init() {
 
 type CreateAlertRuleInput struct {
 	Name             string   `json:"name" jsonschema:"alert rule name"`
-	ResourceType     string   `json:"resource_type" jsonschema:"instance, managed_database, load_balancer, or vpn_gateway"`
-	Metric           string   `json:"metric" jsonschema:"metric to evaluate (e.g. cpu, memory)"`
+	ResourceType     string   `json:"resource_type" jsonschema:"instance, managed_database, load_balancer, vpn_gateway, or certificate"`
+	Metric           string   `json:"metric" jsonschema:"metric to evaluate (e.g. cpu, memory, or for certificate: days_until_expiry, status)"`
 	Operator         string   `json:"operator" jsonschema:"gt, lt, gte, lte, or eq"`
 	Threshold        float64  `json:"threshold" jsonschema:"threshold value"`
 	ResourceID       string   `json:"resource_id,omitempty" jsonschema:"optional specific resource UUID (omit to match all of the type)"`

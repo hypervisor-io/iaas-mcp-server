@@ -10,11 +10,16 @@ import (
 )
 
 // Load balancer tools, mirroring the iaas_load_balancer resource and its child
-// resources (frontend, backend, target, certificate, routing_rule). The LB
-// create is async (poll status to "active"); delete converges to 404. Children
-// are synchronous (the server syncs config internally) and have no SHOW route
+// resources (frontend, backend, target, routing_rule). The LB create is async
+// (poll status to "active"); delete converges to 404. Children are
+// synchronous (the server syncs config internally) and have no SHOW route
 // (the client resolves them by scanning the LB). There is no LB update route
 // and no sync action, so neither is exposed.
+//
+// Certificates are no longer an LB child resource (account-certificates
+// Phase 3 cleanup removed the `/load-balancer/{lb}/certificate*` shims) -
+// see user.certificate.* in certificate.go, and attach a certificate to a
+// listener via the frontend's certificate_ids.
 
 func init() {
 	toolRegistrars = append(toolRegistrars, registerLoadBalancerTools)
@@ -53,25 +58,27 @@ type LoadBalancerListResult struct {
 // ── child inputs / outputs ──────────────────────────────────────────────────
 
 type CreateLBFrontendInput struct {
-	LoadBalancerID   string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
-	Name             string `json:"name" jsonschema:"frontend name"`
-	Port             int    `json:"port" jsonschema:"listen port"`
-	Protocol         string `json:"protocol,omitempty" jsonschema:"http, https, tcp, or udp"`
-	Mode             string `json:"mode,omitempty" jsonschema:"http or tcp"`
-	SSLCertificateID string `json:"ssl_certificate_id,omitempty" jsonschema:"UUID of an LB certificate"`
-	DefaultBackendID string `json:"default_backend_id,omitempty" jsonschema:"UUID of the default backend"`
-	Enabled          *bool  `json:"enabled,omitempty" jsonschema:"whether the frontend is enabled"`
+	LoadBalancerID   string   `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
+	Name             string   `json:"name" jsonschema:"frontend name"`
+	Port             int      `json:"port" jsonschema:"listen port"`
+	Protocol         string   `json:"protocol,omitempty" jsonschema:"http, https, tcp, or udp"`
+	Mode             string   `json:"mode,omitempty" jsonschema:"http or tcp"`
+	SSLCertificateID string   `json:"ssl_certificate_id,omitempty" jsonschema:"UUID of an account certificate (legacy single-certificate form; prefer certificate_ids)"`
+	CertificateIDs   []string `json:"certificate_ids,omitempty" jsonschema:"ordered UUIDs of account certificates to attach for SNI (first is the default); superset of ssl_certificate_id"`
+	DefaultBackendID string   `json:"default_backend_id,omitempty" jsonschema:"UUID of the default backend"`
+	Enabled          *bool    `json:"enabled,omitempty" jsonschema:"whether the frontend is enabled"`
 }
 
 type UpdateLBFrontendInput struct {
-	LoadBalancerID   string  `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
-	FrontendID       string  `json:"frontend_id" jsonschema:"UUID of the frontend"`
-	Name             *string `json:"name,omitempty"`
-	Port             *int    `json:"port,omitempty"`
-	Protocol         *string `json:"protocol,omitempty"`
-	SSLCertificateID *string `json:"ssl_certificate_id,omitempty"`
-	DefaultBackendID *string `json:"default_backend_id,omitempty"`
-	Enabled          *bool   `json:"enabled,omitempty"`
+	LoadBalancerID   string   `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
+	FrontendID       string   `json:"frontend_id" jsonschema:"UUID of the frontend"`
+	Name             *string  `json:"name,omitempty"`
+	Port             *int     `json:"port,omitempty"`
+	Protocol         *string  `json:"protocol,omitempty"`
+	SSLCertificateID *string  `json:"ssl_certificate_id,omitempty" jsonschema:"legacy single-certificate form; prefer certificate_ids"`
+	CertificateIDs   []string `json:"certificate_ids,omitempty" jsonschema:"ordered UUIDs of account certificates to attach for SNI (send an empty list to clear); superset of ssl_certificate_id"`
+	DefaultBackendID *string  `json:"default_backend_id,omitempty"`
+	Enabled          *bool    `json:"enabled,omitempty"`
 }
 
 type LBChildRef struct {
@@ -108,14 +115,6 @@ type LBTargetRef struct {
 	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
 	BackendID      string `json:"backend_id" jsonschema:"UUID of the parent backend"`
 	TargetID       string `json:"target_id" jsonschema:"UUID of the target"`
-}
-
-type CreateLBCertificateInput struct {
-	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
-	Name           string `json:"name" jsonschema:"certificate name"`
-	Certificate    string `json:"certificate" jsonschema:"PEM certificate"`
-	PrivateKey     string `json:"private_key" jsonschema:"PEM private key"`
-	Chain          string `json:"chain,omitempty" jsonschema:"optional PEM chain"`
 }
 
 type CreateLBRoutingRuleInput struct {
@@ -177,9 +176,6 @@ type LBBackendResult struct {
 }
 type LBTargetResult struct {
 	Target map[string]any `json:"target"`
-}
-type LBCertificateResult struct {
-	Certificate map[string]any `json:"certificate"`
 }
 type LBRoutingRuleResult struct {
 	Rule map[string]any `json:"rule"`
@@ -256,7 +252,12 @@ func createLBFrontend(ctx context.Context, cl *client.Client, in CreateLBFronten
 	if in.Mode != "" {
 		body["mode"] = in.Mode
 	}
-	if in.SSLCertificateID != "" {
+	// certificate_ids[] takes precedence over the legacy single
+	// ssl_certificate_id when both are supplied (mirrors
+	// LoadBalancerService::storeFrontend's `$request->has('certificate_ids')` check).
+	if in.CertificateIDs != nil {
+		body["certificate_ids"] = in.CertificateIDs
+	} else if in.SSLCertificateID != "" {
 		body["ssl_certificate_id"] = in.SSLCertificateID
 	}
 	if in.DefaultBackendID != "" {
@@ -291,7 +292,13 @@ func updateLBFrontend(ctx context.Context, cl *client.Client, in UpdateLBFronten
 	if in.Protocol != nil {
 		body["protocol"] = *in.Protocol
 	}
-	if in.SSLCertificateID != nil {
+	// certificate_ids[] takes precedence over the legacy single
+	// ssl_certificate_id when both are supplied (mirrors
+	// LoadBalancerService::updateFrontend's `$request->has('certificate_ids')` check).
+	// An explicit empty list clears every attached certificate.
+	if in.CertificateIDs != nil {
+		body["certificate_ids"] = in.CertificateIDs
+	} else if in.SSLCertificateID != nil {
 		body["ssl_certificate_id"] = *in.SSLCertificateID
 	}
 	if in.DefaultBackendID != nil {
@@ -396,35 +403,6 @@ func deleteLBTarget(ctx context.Context, cl *client.Client, in LBTargetDeleteInp
 	return DeleteResult{ID: in.TargetID, Deleted: true}, nil
 }
 
-// ── certificate handlers ────────────────────────────────────────────────────
-
-func createLBCertificate(ctx context.Context, cl *client.Client, in CreateLBCertificateInput) (LBCertificateResult, error) {
-	body := map[string]any{"name": in.Name, "certificate": in.Certificate, "private_key": in.PrivateKey}
-	if in.Chain != "" {
-		body["chain"] = in.Chain
-	}
-	obj, err := cl.CreateLBCertificate(ctx, in.LoadBalancerID, body)
-	if err != nil {
-		return LBCertificateResult{}, err
-	}
-	return LBCertificateResult{Certificate: obj}, nil
-}
-
-func getLBCertificate(ctx context.Context, cl *client.Client, in LBChildRef) (LBCertificateResult, error) {
-	obj, err := cl.GetLBCertificate(ctx, in.LoadBalancerID, in.ChildID)
-	if err != nil {
-		return LBCertificateResult{}, err
-	}
-	return LBCertificateResult{Certificate: obj}, nil
-}
-
-func deleteLBCertificate(ctx context.Context, cl *client.Client, in LBChildDeleteInput) (DeleteResult, error) {
-	if err := cl.DeleteLBCertificate(ctx, in.LoadBalancerID, in.ChildID); err != nil {
-		return DeleteResult{}, err
-	}
-	return DeleteResult{ID: in.ChildID, Deleted: true}, nil
-}
-
 // ── routing rule handlers ───────────────────────────────────────────────────
 
 func createLBRoutingRule(ctx context.Context, cl *client.Client, in CreateLBRoutingRuleInput) (LBRoutingRuleResult, error) {
@@ -526,15 +504,6 @@ func registerLoadBalancerTools(s *mcp.Server, deps Deps) {
 		Description: "Delete a backend target. DESTRUCTIVE: requires \"confirm\": true.",
 		Destructive: true,
 	}, deleteLBTarget)
-
-	// Certificates.
-	Register(s, deps, Spec{Name: "user.load_balancer.certificate_create", Description: "Upload a TLS certificate to a load balancer."}, createLBCertificate)
-	Register(s, deps, Spec{Name: "user.load_balancer.certificate_get", Description: "Get a load balancer certificate."}, getLBCertificate)
-	Register(s, deps, Spec{
-		Name:        "user.load_balancer.certificate_delete",
-		Description: "Delete a load balancer certificate. DESTRUCTIVE: requires \"confirm\": true.",
-		Destructive: true,
-	}, deleteLBCertificate)
 
 	// Routing rules.
 	Register(s, deps, Spec{Name: "user.load_balancer.routing_rule_create", Description: "Add a routing rule to a frontend."}, createLBRoutingRule)

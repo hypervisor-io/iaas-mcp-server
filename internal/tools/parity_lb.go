@@ -8,8 +8,15 @@ import (
 	"github.com/hypervisor-io/terraform-provider-iaas/client"
 )
 
-// Load balancer security-group rule, sync, and Let's Encrypt certificate tools.
-// All synchronous.
+// Load balancer security-group rule and sync tools. All synchronous.
+//
+// The LB-scoped certificate tools (le_certificate, certificate_retry, and
+// load_balancer.go's certificate_create/certificate_get/certificate_delete)
+// were removed (account-certificates Phase 3 cleanup): the underlying
+// `/load-balancer/{lb}/certificate*` and `/load-balancer/{lb}/le-certificate`
+// API shims are gone from the Master API entirely. Certificates are managed
+// via the account-wide iaas_certificate resource / user.certificate.* tools
+// and attached to a listener with iaas_lb_frontend's certificate_ids.
 
 func init() {
 	toolRegistrars = append(toolRegistrars, registerParityLBTools)
@@ -43,16 +50,6 @@ type RemoveLBSecurityGroupRuleInput struct {
 
 type LBIDInput struct {
 	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
-}
-
-type LBLetsEncryptInput struct {
-	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
-	Domains        string `json:"domains" jsonschema:"comma-separated domains (first is the CN, rest are SANs)"`
-}
-
-type LBCertificateRetryInput struct {
-	LoadBalancerID string `json:"load_balancer_id" jsonschema:"UUID of the load balancer"`
-	CertificateID  string `json:"certificate_id" jsonschema:"UUID of the certificate to retry"`
 }
 
 func listLBSecurityGroupRules(ctx context.Context, cl *client.Client, in LBSecurityGroupRulesInput) (ItemsResult, error) {
@@ -100,21 +97,6 @@ func syncLoadBalancer(ctx context.Context, cl *client.Client, in LBIDInput) (OKR
 	return okResult("load balancer sync requested"), nil
 }
 
-func lbLetsEncryptCertificate(ctx context.Context, cl *client.Client, in LBLetsEncryptInput) (LBCertificateResult, error) {
-	obj, err := cl.CreateLBLetsEncryptCertificate(ctx, in.LoadBalancerID, map[string]any{"domains": in.Domains})
-	if err != nil {
-		return LBCertificateResult{}, err
-	}
-	return LBCertificateResult{Certificate: obj}, nil
-}
-
-func lbCertificateRetry(ctx context.Context, cl *client.Client, in LBCertificateRetryInput) (OKResult, error) {
-	if err := cl.RetryLBCertificate(ctx, in.LoadBalancerID, in.CertificateID); err != nil {
-		return OKResult{}, err
-	}
-	return okResult("certificate issuance retry requested"), nil
-}
-
 func registerParityLBTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.load_balancer.list_security_group_rules", Description: "List a load balancer security group's rules."}, listLBSecurityGroupRules)
 	Register(s, deps, Spec{Name: "user.load_balancer.add_security_group_rule", Description: "Add a rule to a load balancer's security group."}, addLBSecurityGroupRule)
@@ -124,6 +106,4 @@ func registerParityLBTools(s *mcp.Server, deps Deps) {
 		Destructive: true,
 	}, removeLBSecurityGroupRule)
 	Register(s, deps, Spec{Name: "user.load_balancer.sync", Description: "Force a load balancer config sync (HAProxy reload)."}, syncLoadBalancer)
-	Register(s, deps, Spec{Name: "user.load_balancer.le_certificate", Description: "Issue a Let's Encrypt certificate for domains on a load balancer."}, lbLetsEncryptCertificate)
-	Register(s, deps, Spec{Name: "user.load_balancer.certificate_retry", Description: "Retry issuing a failed load balancer certificate."}, lbCertificateRetry)
 }
