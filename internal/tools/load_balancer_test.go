@@ -148,6 +148,30 @@ func TestLoadBalancer_CreateConvergesAndChildren(t *testing.T) {
 	}
 }
 
+func TestLoadBalancerFrontend_SSLRedirect(t *testing.T) {
+	rec := newBodyRecorder()
+	cs := connectSession(t, loadBalancerMock(rec))
+
+	res := callTool(t, cs, "user.load_balancer.frontend_create", map[string]any{"load_balancer_id": "lb-1", "name": "http", "port": 80, "ssl_redirect": true})
+	var fe tools.LBFrontendResult
+	unmarshalResult(t, res, &fe)
+	if got := rec.get("frontend_create")["ssl_redirect"]; got != true {
+		t.Errorf("frontend_create ssl_redirect = %v, want true", got)
+	}
+
+	res = callTool(t, cs, "user.load_balancer.frontend_update", map[string]any{"load_balancer_id": "lb-1", "frontend_id": "fe-1", "ssl_redirect": false})
+	unmarshalResult(t, res, &fe)
+	if got, ok := rec.get("frontend_update")["ssl_redirect"]; !ok || got != false {
+		t.Errorf("frontend_update ssl_redirect = %v (present=%v), want false", got, ok)
+	}
+
+	res = callTool(t, cs, "user.load_balancer.frontend_update", map[string]any{"load_balancer_id": "lb-1", "frontend_id": "fe-1", "name": "http2"})
+	unmarshalResult(t, res, &fe)
+	if _, ok := rec.get("frontend_update")["ssl_redirect"]; ok {
+		t.Errorf("frontend_update without ssl_redirect sent the key anyway: %v", rec.get("frontend_update"))
+	}
+}
+
 func TestLoadBalancer_DeleteConfirmConverges(t *testing.T) {
 	cs := connectSession(t, loadBalancerMock(newBodyRecorder()))
 	res := callTool(t, cs, "user.load_balancer.delete", map[string]any{"id": "lb-1"})
