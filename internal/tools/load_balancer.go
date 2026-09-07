@@ -68,6 +68,7 @@ type CreateLBFrontendInput struct {
 	DefaultBackendID string   `json:"default_backend_id,omitempty" jsonschema:"UUID of the default backend"`
 	Enabled          *bool    `json:"enabled,omitempty" jsonschema:"whether the frontend is enabled"`
 	IdleTimeout      *int     `json:"idle_timeout,omitempty" jsonschema:"idle connection timeout in seconds, 30-86400; omit for the default (50 s http/https, 3600 s tcp)"`
+	SslRedirect      *bool    `json:"ssl_redirect,omitempty" jsonschema:"redirect HTTP to HTTPS with a 301; only meaningful on an http listener on a port other than 443"`
 }
 
 type UpdateLBFrontendInput struct {
@@ -81,6 +82,7 @@ type UpdateLBFrontendInput struct {
 	DefaultBackendID *string  `json:"default_backend_id,omitempty"`
 	Enabled          *bool    `json:"enabled,omitempty"`
 	IdleTimeout      *int     `json:"idle_timeout,omitempty" jsonschema:"idle connection timeout in seconds, 30-86400; omit for the default (50 s http/https, 3600 s tcp)"`
+	SslRedirect      *bool    `json:"ssl_redirect,omitempty" jsonschema:"redirect HTTP to HTTPS with a 301; only meaningful on an http listener on a port other than 443"`
 }
 
 type LBChildRef struct {
@@ -271,6 +273,9 @@ func createLBFrontend(ctx context.Context, cl *client.Client, in CreateLBFronten
 	if in.IdleTimeout != nil {
 		body["idle_timeout"] = *in.IdleTimeout
 	}
+	if in.SslRedirect != nil {
+		body["ssl_redirect"] = *in.SslRedirect
+	}
 	obj, err := cl.CreateLBFrontend(ctx, in.LoadBalancerID, body)
 	if err != nil {
 		return LBFrontendResult{}, err
@@ -314,6 +319,9 @@ func updateLBFrontend(ctx context.Context, cl *client.Client, in UpdateLBFronten
 	}
 	if in.IdleTimeout != nil {
 		body["idle_timeout"] = *in.IdleTimeout
+	}
+	if in.SslRedirect != nil {
+		body["ssl_redirect"] = *in.SslRedirect
 	}
 	obj, err := cl.UpdateLBFrontend(ctx, in.LoadBalancerID, in.FrontendID, body)
 	if err != nil {
