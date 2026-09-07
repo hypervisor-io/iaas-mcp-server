@@ -67,6 +67,7 @@ type CreateLBFrontendInput struct {
 	CertificateIDs   []string `json:"certificate_ids,omitempty" jsonschema:"ordered UUIDs of account certificates to attach for SNI (first is the default); superset of ssl_certificate_id"`
 	DefaultBackendID string   `json:"default_backend_id,omitempty" jsonschema:"UUID of the default backend"`
 	Enabled          *bool    `json:"enabled,omitempty" jsonschema:"whether the frontend is enabled"`
+	IdleTimeout      *int     `json:"idle_timeout,omitempty" jsonschema:"idle connection timeout in seconds, 30-86400; omit for the default (50 s http/https, 3600 s tcp)"`
 }
 
 type UpdateLBFrontendInput struct {
@@ -79,6 +80,7 @@ type UpdateLBFrontendInput struct {
 	CertificateIDs   []string `json:"certificate_ids,omitempty" jsonschema:"ordered UUIDs of account certificates to attach for SNI (send an empty list to clear); superset of ssl_certificate_id"`
 	DefaultBackendID *string  `json:"default_backend_id,omitempty"`
 	Enabled          *bool    `json:"enabled,omitempty"`
+	IdleTimeout      *int     `json:"idle_timeout,omitempty" jsonschema:"idle connection timeout in seconds, 30-86400; omit for the default (50 s http/https, 3600 s tcp)"`
 }
 
 type LBChildRef struct {
@@ -266,6 +268,9 @@ func createLBFrontend(ctx context.Context, cl *client.Client, in CreateLBFronten
 	if in.Enabled != nil {
 		body["enabled"] = *in.Enabled
 	}
+	if in.IdleTimeout != nil {
+		body["idle_timeout"] = *in.IdleTimeout
+	}
 	obj, err := cl.CreateLBFrontend(ctx, in.LoadBalancerID, body)
 	if err != nil {
 		return LBFrontendResult{}, err
@@ -306,6 +311,9 @@ func updateLBFrontend(ctx context.Context, cl *client.Client, in UpdateLBFronten
 	}
 	if in.Enabled != nil {
 		body["enabled"] = *in.Enabled
+	}
+	if in.IdleTimeout != nil {
+		body["idle_timeout"] = *in.IdleTimeout
 	}
 	obj, err := cl.UpdateLBFrontend(ctx, in.LoadBalancerID, in.FrontendID, body)
 	if err != nil {
