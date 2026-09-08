@@ -61,6 +61,8 @@ type UpdateLBBackendInput struct {
 	Name           *string `json:"name,omitempty" jsonschema:"new name"`
 	Algorithm      *string `json:"algorithm,omitempty" jsonschema:"roundrobin, leastconn, or source"`
 	Mode           *string `json:"mode,omitempty" jsonschema:"http or tcp"`
+	ConnectTimeout *int    `json:"connect_timeout,omitempty" jsonschema:"time to wait for a backend server connection to establish, in seconds, 1-75; omit for the default (5 s)"`
+	ServerTimeout  *int    `json:"server_timeout,omitempty" jsonschema:"max time a backend server has to respond once connected, in seconds, 1-86400 (covers both send and read - HAProxy has no separate timeout for each); omit to derive it from the idle_timeout of the frontend(s) referencing this backend"`
 }
 
 type DeleteVPCInput struct {
@@ -174,6 +176,12 @@ func updateLBBackend(ctx context.Context, cl *client.Client, in UpdateLBBackendI
 	}
 	if in.Mode != nil {
 		body["mode"] = *in.Mode
+	}
+	if in.ConnectTimeout != nil {
+		body["connect_timeout"] = *in.ConnectTimeout
+	}
+	if in.ServerTimeout != nil {
+		body["server_timeout"] = *in.ServerTimeout
 	}
 	obj, err := cl.UpdateLBBackend(ctx, in.LoadBalancerID, in.BackendID, body)
 	if err != nil {
