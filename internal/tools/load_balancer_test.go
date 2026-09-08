@@ -82,7 +82,12 @@ func loadBalancerMock(rec *bodyRecorder) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "frontend": map[string]any{"id": r.PathValue("fid"), "port": 443}})
 	})
 	mux.HandleFunc("POST /load-balancer/{id}/backends", func(w http.ResponseWriter, r *http.Request) {
+		rec.record("backend_create", r)
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "backend": map[string]any{"id": "be-1", "name": "web"}})
+	})
+	mux.HandleFunc("PATCH /load-balancer/{id}/backend/{bid}", func(w http.ResponseWriter, r *http.Request) {
+		rec.record("backend_update", r)
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "backend": map[string]any{"id": r.PathValue("bid"), "name": "web"}})
 	})
 	mux.HandleFunc("POST /load-balancer/{id}/backend/{bid}/targets", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "target": map[string]any{"id": "tg-1", "target_ip": "10.0.0.5"}})
@@ -126,11 +131,35 @@ func TestLoadBalancer_CreateConvergesAndChildren(t *testing.T) {
 		t.Errorf("frontend_update without idle_timeout sent the key anyway: %v", rec.get("frontend_update"))
 	}
 
-	res = callTool(t, cs, "user.load_balancer.backend_create", map[string]any{"load_balancer_id": "lb-1", "name": "web"})
+	res = callTool(t, cs, "user.load_balancer.backend_create", map[string]any{"load_balancer_id": "lb-1", "name": "web", "connect_timeout": 10, "server_timeout": 900})
 	var be tools.LBBackendResult
 	unmarshalResult(t, res, &be)
 	if be.Backend["id"] != "be-1" {
 		t.Errorf("backend id = %v, want be-1", be.Backend["id"])
+	}
+	if got := rec.get("backend_create")["connect_timeout"]; got != float64(10) {
+		t.Errorf("backend_create connect_timeout = %v, want 10", got)
+	}
+	if got := rec.get("backend_create")["server_timeout"]; got != float64(900) {
+		t.Errorf("backend_create server_timeout = %v, want 900", got)
+	}
+
+	res = callTool(t, cs, "user.load_balancer.backend_update", map[string]any{"load_balancer_id": "lb-1", "backend_id": "be-1", "connect_timeout": 20, "server_timeout": 1200})
+	unmarshalResult(t, res, &be)
+	if got := rec.get("backend_update")["connect_timeout"]; got != float64(20) {
+		t.Errorf("backend_update connect_timeout = %v, want 20", got)
+	}
+	if got := rec.get("backend_update")["server_timeout"]; got != float64(1200) {
+		t.Errorf("backend_update server_timeout = %v, want 1200", got)
+	}
+
+	res = callTool(t, cs, "user.load_balancer.backend_update", map[string]any{"load_balancer_id": "lb-1", "backend_id": "be-1", "name": "web2"})
+	unmarshalResult(t, res, &be)
+	if _, ok := rec.get("backend_update")["connect_timeout"]; ok {
+		t.Errorf("backend_update without connect_timeout sent the key anyway: %v", rec.get("backend_update"))
+	}
+	if _, ok := rec.get("backend_update")["server_timeout"]; ok {
+		t.Errorf("backend_update without server_timeout sent the key anyway: %v", rec.get("backend_update"))
 	}
 
 	res = callTool(t, cs, "user.load_balancer.target_create", map[string]any{"load_balancer_id": "lb-1", "backend_id": "be-1", "target_ip": "10.0.0.5", "target_port": 8080})

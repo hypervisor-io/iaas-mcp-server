@@ -95,6 +95,8 @@ type CreateLBBackendInput struct {
 	Name           string `json:"name" jsonschema:"backend name"`
 	Algorithm      string `json:"algorithm,omitempty" jsonschema:"roundrobin, leastconn, or source"`
 	Mode           string `json:"mode,omitempty" jsonschema:"http or tcp"`
+	ConnectTimeout *int   `json:"connect_timeout,omitempty" jsonschema:"time to wait for a backend server connection to establish, in seconds, 1-75; omit for the default (5 s)"`
+	ServerTimeout  *int   `json:"server_timeout,omitempty" jsonschema:"max time a backend server has to respond once connected, in seconds, 1-86400 (covers both send and read - HAProxy has no separate timeout for each); omit to derive it from the idle_timeout of the frontend(s) referencing this backend"`
 }
 
 type CreateLBTargetInput struct {
@@ -346,6 +348,12 @@ func createLBBackend(ctx context.Context, cl *client.Client, in CreateLBBackendI
 	}
 	if in.Mode != "" {
 		body["mode"] = in.Mode
+	}
+	if in.ConnectTimeout != nil {
+		body["connect_timeout"] = *in.ConnectTimeout
+	}
+	if in.ServerTimeout != nil {
+		body["server_timeout"] = *in.ServerTimeout
 	}
 	obj, err := cl.CreateLBBackend(ctx, in.LoadBalancerID, body)
 	if err != nil {
