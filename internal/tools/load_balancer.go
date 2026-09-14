@@ -67,6 +67,8 @@ type CreateLBFrontendInput struct {
 	CertificateIDs   []string `json:"certificate_ids,omitempty" jsonschema:"ordered UUIDs of account certificates to attach for SNI (first is the default); superset of ssl_certificate_id"`
 	DefaultBackendID string   `json:"default_backend_id,omitempty" jsonschema:"UUID of the default backend"`
 	Enabled          *bool    `json:"enabled,omitempty" jsonschema:"whether the frontend is enabled"`
+	IdleTimeout      *int     `json:"idle_timeout,omitempty" jsonschema:"idle connection timeout in seconds, 30-86400; omit for the default (50 s http/https, 3600 s tcp)"`
+	SslRedirect      *bool    `json:"ssl_redirect,omitempty" jsonschema:"redirect HTTP to HTTPS with a 301; only meaningful on an http listener on a port other than 443"`
 }
 
 type UpdateLBFrontendInput struct {
@@ -79,6 +81,8 @@ type UpdateLBFrontendInput struct {
 	CertificateIDs   []string `json:"certificate_ids,omitempty" jsonschema:"ordered UUIDs of account certificates to attach for SNI (send an empty list to clear); superset of ssl_certificate_id"`
 	DefaultBackendID *string  `json:"default_backend_id,omitempty"`
 	Enabled          *bool    `json:"enabled,omitempty"`
+	IdleTimeout      *int     `json:"idle_timeout,omitempty" jsonschema:"idle connection timeout in seconds, 30-86400; omit for the default (50 s http/https, 3600 s tcp)"`
+	SslRedirect      *bool    `json:"ssl_redirect,omitempty" jsonschema:"redirect HTTP to HTTPS with a 301; only meaningful on an http listener on a port other than 443"`
 }
 
 type LBChildRef struct {
@@ -91,6 +95,8 @@ type CreateLBBackendInput struct {
 	Name           string `json:"name" jsonschema:"backend name"`
 	Algorithm      string `json:"algorithm,omitempty" jsonschema:"roundrobin, leastconn, or source"`
 	Mode           string `json:"mode,omitempty" jsonschema:"http or tcp"`
+	ConnectTimeout *int   `json:"connect_timeout,omitempty" jsonschema:"time to wait for a backend server connection to establish, in seconds, 1-75; omit for the default (5 s)"`
+	ServerTimeout  *int   `json:"server_timeout,omitempty" jsonschema:"max time a backend server has to respond once connected, in seconds, 1-86400 (covers both send and read - HAProxy has no separate timeout for each); omit to derive it from the idle_timeout of the frontend(s) referencing this backend"`
 }
 
 type CreateLBTargetInput struct {
@@ -266,6 +272,12 @@ func createLBFrontend(ctx context.Context, cl *client.Client, in CreateLBFronten
 	if in.Enabled != nil {
 		body["enabled"] = *in.Enabled
 	}
+	if in.IdleTimeout != nil {
+		body["idle_timeout"] = *in.IdleTimeout
+	}
+	if in.SslRedirect != nil {
+		body["ssl_redirect"] = *in.SslRedirect
+	}
 	obj, err := cl.CreateLBFrontend(ctx, in.LoadBalancerID, body)
 	if err != nil {
 		return LBFrontendResult{}, err
@@ -307,6 +319,12 @@ func updateLBFrontend(ctx context.Context, cl *client.Client, in UpdateLBFronten
 	if in.Enabled != nil {
 		body["enabled"] = *in.Enabled
 	}
+	if in.IdleTimeout != nil {
+		body["idle_timeout"] = *in.IdleTimeout
+	}
+	if in.SslRedirect != nil {
+		body["ssl_redirect"] = *in.SslRedirect
+	}
 	obj, err := cl.UpdateLBFrontend(ctx, in.LoadBalancerID, in.FrontendID, body)
 	if err != nil {
 		return LBFrontendResult{}, err
@@ -330,6 +348,12 @@ func createLBBackend(ctx context.Context, cl *client.Client, in CreateLBBackendI
 	}
 	if in.Mode != "" {
 		body["mode"] = in.Mode
+	}
+	if in.ConnectTimeout != nil {
+		body["connect_timeout"] = *in.ConnectTimeout
+	}
+	if in.ServerTimeout != nil {
+		body["server_timeout"] = *in.ServerTimeout
 	}
 	obj, err := cl.CreateLBBackend(ctx, in.LoadBalancerID, body)
 	if err != nil {
