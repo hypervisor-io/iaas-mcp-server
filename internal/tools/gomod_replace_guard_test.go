@@ -8,12 +8,12 @@ package tools_test
 // directive was committed during MVU2-9 as a temporary bridge to unreleased
 // provider client methods; it must not come back silently.
 //
-// This test is RED until terraform-provider-iaas v0.4.0 is tagged (owner
-// action, punk /questions/MVU5-5: tag provider feature head 86d6be4) and the
-// replace is swapped for the tag. Post-tag sequence:
+// The replace was dropped in MVU5-5 by pinning the provider's feature head
+// as a pseudo-version through proxy.golang.org (no tag needed; planner
+// decision in /answers/MVU5-5, agent-master):
 //
 //	go mod edit -dropreplace=github.com/hypervisor-io/terraform-provider-iaas
-//	go get github.com/hypervisor-io/terraform-provider-iaas@v0.4.0
+//	go get github.com/hypervisor-io/terraform-provider-iaas@86d6be4149fea02002d88f37eb321133eabc1f35
 //	go mod tidy
 //	grep 'terraform-provider-iaas v0.4.0' go.sum   # go.sum must pin the tag
 //	tmp=$(mktemp -d) && git clone <repo-url> "$tmp/repo" && cd "$tmp/repo" \
