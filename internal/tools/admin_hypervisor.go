@@ -88,16 +88,6 @@ func registerAdminHypervisorTools(s *mcp.Server, deps Deps) {
 			return adminItem(cl.AdminGetBackupStorage(ctx, in.ID))
 		})
 
-	// Backup plans.
-	Register(s, deps, Spec{Name: "admin.backup_plan.list", Description: "List hypervisor backup plans (admin).", Admin: true},
-		func(ctx context.Context, cl *client.Client, _ EmptyInput) (AdminListResult, error) {
-			return adminList(cl.AdminListBackupPlans(ctx))
-		})
-	Register(s, deps, Spec{Name: "admin.backup_plan.get", Description: "Get a backup plan by UUID (admin).", Admin: true},
-		func(ctx context.Context, cl *client.Client, in AdminIDInput) (AdminItemResult, error) {
-			return adminItem(cl.AdminGetBackupPlan(ctx, in.ID))
-		})
-
 	// Safe mutation: maintenance toggle (reversible, confirm-gated).
 	Register(s, deps, Spec{
 		Name:        "admin.hypervisor.set_maintenance",
