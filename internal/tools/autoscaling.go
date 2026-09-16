@@ -22,7 +22,8 @@ func init() {
 
 type CreateAutoscalingGroupInput struct {
 	Name              string   `json:"name" jsonschema:"scaling group name"`
-	HypervisorGroupID string   `json:"hypervisor_group_id" jsonschema:"UUID of the hypervisor group"`
+	LocationID        string   `json:"location_id,omitempty" jsonschema:"UUID of the location (hypervisor group)"`
+	HypervisorGroupID string   `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 	PlanID            string   `json:"plan_id" jsonschema:"UUID of the instance plan"`
 	ImageID           string   `json:"image_id" jsonschema:"UUID of the OS image"`
 	VPCID             string   `json:"vpc_id,omitempty" jsonschema:"optional VPC UUID"`
@@ -110,10 +111,10 @@ type AutoscalingPolicyResult struct {
 
 func createAutoscalingGroup(ctx context.Context, cl *client.Client, in CreateAutoscalingGroupInput) (AutoscalingGroupResult, error) {
 	body := map[string]any{
-		"name":                in.Name,
-		"hypervisor_group_id": in.HypervisorGroupID,
-		"plan_id":             in.PlanID,
-		"image_id":            in.ImageID,
+		"name":        in.Name,
+		"location_id": resolveLocationID(in.LocationID, in.HypervisorGroupID),
+		"plan_id":     in.PlanID,
+		"image_id":    in.ImageID,
 	}
 	if in.VPCID != "" {
 		body["vpc_id"] = in.VPCID
@@ -280,7 +281,7 @@ func deleteAutoscalingPolicy(ctx context.Context, cl *client.Client, in DeleteAu
 }
 
 func registerAutoscalingTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "user.autoscaling_group.create", Description: "Create an autoscaling group."}, createAutoscalingGroup)
+	Register(s, deps, Spec{Name: "user.autoscaling_group.create", Description: "Create an autoscaling group." + locationIDAliasNote}, createAutoscalingGroup)
 	Register(s, deps, Spec{Name: "user.autoscaling_group.list", Description: "List all autoscaling groups owned by the caller."}, listAutoscalingGroups)
 	Register(s, deps, Spec{Name: "user.autoscaling_group.get", Description: "Get an autoscaling group by UUID (with policies)."}, getAutoscalingGroup)
 	Register(s, deps, Spec{Name: "user.autoscaling_group.update", Description: "Update an autoscaling group's name or min/max instances."}, updateAutoscalingGroup)

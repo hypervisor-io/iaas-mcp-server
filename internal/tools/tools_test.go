@@ -410,7 +410,7 @@ func TestErrorMapping_404NotFound(t *testing.T) {
 func TestVPCCreate_ReadsBackFullObject(t *testing.T) {
 	cs := newSession(t)
 	res := callTool(t, cs, "user.vpc.create", map[string]any{
-		"name": "prod", "cidr": "10.0.0.0/24", "hypervisor_group_id": "hg-1",
+		"name": "prod", "cidr": "10.0.0.0/24", "location_id": "hg-1",
 	})
 	var out tools.VPCResult
 	unmarshalResult(t, res, &out)

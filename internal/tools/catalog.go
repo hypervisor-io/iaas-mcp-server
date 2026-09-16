@@ -49,11 +49,13 @@ type PlansInput struct {
 
 type ImagesInput struct {
 	Query             string `json:"query,omitempty" jsonschema:"optional substring filter"`
-	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"optional hypervisor group UUID to scope images"`
+	LocationID        string `json:"location_id,omitempty" jsonschema:"optional location (hypervisor group) UUID to scope images"`
+	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 }
 
 type K8sVpcsInput struct {
-	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"optional hypervisor group UUID"`
+	LocationID        string `json:"location_id,omitempty" jsonschema:"optional location (hypervisor group) UUID"`
+	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 	Query             string `json:"query,omitempty" jsonschema:"optional substring filter"`
 }
 
@@ -76,9 +78,9 @@ func registerCatalogTools(s *mcp.Server, deps Deps) {
 		func(ctx context.Context, cl *client.Client, in PlansInput) (CatalogListResult, error) {
 			return catalogResult(cl.ListPlans(ctx, in.LocationID, in.PlanGroupID))
 		})
-	Register(s, deps, Spec{Name: "user.catalog.images", Description: "Search OS images (optionally scoped to a hypervisor group)."},
+	Register(s, deps, Spec{Name: "user.catalog.images", Description: "Search OS images (optionally scoped to a location)." + locationIDAliasNote},
 		func(ctx context.Context, cl *client.Client, in ImagesInput) (CatalogListResult, error) {
-			return catalogResult(cl.SearchImages(ctx, in.Query, in.HypervisorGroupID))
+			return catalogResult(cl.SearchImages(ctx, in.Query, resolveLocationID(in.LocationID, in.HypervisorGroupID)))
 		})
 	Register(s, deps, Spec{Name: "user.catalog.isos", Description: "List available ISOs."},
 		func(ctx context.Context, cl *client.Client, in QueryInput) (CatalogListResult, error) {
@@ -106,9 +108,9 @@ func registerCatalogTools(s *mcp.Server, deps Deps) {
 		func(ctx context.Context, cl *client.Client, in QueryInput) (CatalogListResult, error) {
 			return catalogResult(cl.SearchK8sLoadBalancerPlans(ctx, in.Query))
 		})
-	Register(s, deps, Spec{Name: "user.catalog.k8s_vpcs", Description: "Search VPCs available for Kubernetes clusters."},
+	Register(s, deps, Spec{Name: "user.catalog.k8s_vpcs", Description: "Search VPCs available for Kubernetes clusters." + locationIDAliasNote},
 		func(ctx context.Context, cl *client.Client, in K8sVpcsInput) (CatalogListResult, error) {
-			return catalogResult(cl.SearchK8sVpcs(ctx, in.HypervisorGroupID, in.Query))
+			return catalogResult(cl.SearchK8sVpcs(ctx, resolveLocationID(in.LocationID, in.HypervisorGroupID), in.Query))
 		})
 	Register(s, deps, Spec{Name: "user.catalog.k8s_subnets", Description: "Search subnets of a VPC for Kubernetes clusters."},
 		func(ctx context.Context, cl *client.Client, in K8sSubnetsInput) (CatalogListResult, error) {

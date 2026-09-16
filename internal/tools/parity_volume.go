@@ -27,13 +27,14 @@ type VolumeBackupDeleteInput struct {
 }
 
 // VolumeRestoreInput restores a volume backup or snapshot. mode is in_place or
-// new_volume; for new_volume, volume_plan_id and hypervisor_group_id are required.
+// new_volume; for new_volume, volume_plan_id and location_id are required.
 type VolumeRestoreInput struct {
 	VolumeID          string `json:"volume_id" jsonschema:"UUID of the source volume"`
 	SourceID          string `json:"source_id" jsonschema:"UUID of the backup or snapshot to restore"`
 	Mode              string `json:"mode" jsonschema:"in_place or new_volume"`
 	VolumePlanID      string `json:"volume_plan_id,omitempty" jsonschema:"new volume plan UUID (required for new_volume)"`
-	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"hypervisor group UUID (required for new_volume)"`
+	LocationID        string `json:"location_id,omitempty" jsonschema:"location (hypervisor group) UUID (required for new_volume)"`
+	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 	Name              string `json:"name,omitempty" jsonschema:"name for the new volume"`
 	ProjectID         string `json:"project_id,omitempty" jsonschema:"optional project UUID"`
 }
@@ -43,8 +44,8 @@ func restoreBody(in VolumeRestoreInput) map[string]any {
 	if in.VolumePlanID != "" {
 		body["volume_plan_id"] = in.VolumePlanID
 	}
-	if in.HypervisorGroupID != "" {
-		body["hypervisor_group_id"] = in.HypervisorGroupID
+	if loc := resolveLocationID(in.LocationID, in.HypervisorGroupID); loc != "" {
+		body["location_id"] = loc
 	}
 	if in.Name != "" {
 		body["name"] = in.Name
@@ -82,6 +83,6 @@ func registerParityVolumeTools(s *mcp.Server, deps Deps) {
 		Description: "Delete a volume backup. DESTRUCTIVE: requires \"confirm\": true.",
 		Destructive: true,
 	}, deleteVolumeBackup)
-	Register(s, deps, Spec{Name: "user.volume.backup_restore", Description: "Restore a volume backup in place or into a new volume."}, restoreVolumeBackup)
-	Register(s, deps, Spec{Name: "user.volume.snapshot_restore", Description: "Restore a volume snapshot in place or into a new volume."}, restoreVolumeSnapshot)
+	Register(s, deps, Spec{Name: "user.volume.backup_restore", Description: "Restore a volume backup in place or into a new volume." + locationIDAliasNote}, restoreVolumeBackup)
+	Register(s, deps, Spec{Name: "user.volume.snapshot_restore", Description: "Restore a volume snapshot in place or into a new volume." + locationIDAliasNote}, restoreVolumeSnapshot)
 }

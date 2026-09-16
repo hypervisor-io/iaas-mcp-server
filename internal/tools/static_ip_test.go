@@ -38,7 +38,7 @@ func TestStaticIP_AllocateListGet(t *testing.T) {
 	cs := connectSession(t, staticIPMock())
 
 	res := callTool(t, cs, "user.static_ip.allocate", map[string]any{
-		"ip_id": "pool-1", "hypervisor_group_id": "hg-1",
+		"ip_id": "pool-1", "location_id": "hg-1",
 	})
 	var alloc tools.StaticIPResult
 	unmarshalResult(t, res, &alloc)

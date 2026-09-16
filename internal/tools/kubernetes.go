@@ -29,7 +29,8 @@ func init() {
 type CreateKubernetesClusterInput struct {
 	Name                 string `json:"name" jsonschema:"cluster name"`
 	Slug                 string `json:"slug" jsonschema:"cluster slug"`
-	HypervisorGroupID    string `json:"hypervisor_group_id" jsonschema:"UUID of the hypervisor group (region)"`
+	LocationID           string `json:"location_id,omitempty" jsonschema:"UUID of the location (hypervisor group, region)"`
+	HypervisorGroupID    string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 	VPCID                string `json:"vpc_id" jsonschema:"UUID of the VPC"`
 	CPVPCSubnetID        string `json:"cp_vpc_subnet_id" jsonschema:"UUID of the control-plane subnet (must be private)"`
 	WorkerVPCSubnetID    string `json:"worker_vpc_subnet_id" jsonschema:"UUID of the worker subnet"`
@@ -257,7 +258,7 @@ func createKubernetesCluster(ctx context.Context, cl *client.Client, in CreateKu
 	body := map[string]any{
 		"name":                    in.Name,
 		"slug":                    in.Slug,
-		"hypervisor_group_id":     in.HypervisorGroupID,
+		"location_id":             resolveLocationID(in.LocationID, in.HypervisorGroupID),
 		"vpc_id":                  in.VPCID,
 		"cp_vpc_subnet_id":        in.CPVPCSubnetID,
 		"worker_vpc_subnet_id":    in.WorkerVPCSubnetID,
@@ -601,7 +602,7 @@ func getAutoscalerManifest(ctx context.Context, cl *client.Client, in K8sCluster
 
 func registerKubernetesTools(s *mcp.Server, deps Deps) {
 	// Cluster.
-	Register(s, deps, Spec{Name: "user.kubernetes_cluster.create", Description: "Create a Kubernetes cluster and wait until it is running."}, createKubernetesCluster)
+	Register(s, deps, Spec{Name: "user.kubernetes_cluster.create", Description: "Create a Kubernetes cluster and wait until it is running." + locationIDAliasNote}, createKubernetesCluster)
 	Register(s, deps, Spec{Name: "user.kubernetes_cluster.list", Description: "List all Kubernetes clusters owned by the caller."}, listKubernetesClusters)
 	Register(s, deps, Spec{Name: "user.kubernetes_cluster.get", Description: "Get a Kubernetes cluster by UUID."}, getKubernetesCluster)
 	Register(s, deps, Spec{

@@ -19,12 +19,13 @@ import (
 // ── inputs / outputs ────────────────────────────────────────────────────────
 
 // CreateVPCInput is user.vpc.create's arguments. name, cidr, and
-// hypervisor_group_id are required; description is optional (omitted, not sent
+// location_id are required; description is optional (omitted, not sent
 // as null, when empty).
 type CreateVPCInput struct {
 	Name              string `json:"name" jsonschema:"VPC name: max 16 chars, lowercase letters and digits only (^[a-z0-9]+$)"`
 	Cidr              string `json:"cidr" jsonschema:"RFC1918 CIDR block, e.g. 10.0.0.0/24"`
-	HypervisorGroupID string `json:"hypervisor_group_id" jsonschema:"UUID of the VPC-enabled hypervisor group (location)"`
+	LocationID        string `json:"location_id,omitempty" jsonschema:"UUID of the VPC-enabled location (hypervisor group)"`
+	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 	Description       string `json:"description,omitempty" jsonschema:"optional free-text description"`
 }
 
@@ -71,9 +72,9 @@ type AttachResult struct {
 // carries the full SHOW object (with subnets).
 func createVPC(ctx context.Context, cl *client.Client, in CreateVPCInput) (VPCResult, error) {
 	body := map[string]any{
-		"name":                in.Name,
-		"cidr":                in.Cidr,
-		"hypervisor_group_id": in.HypervisorGroupID,
+		"name":        in.Name,
+		"cidr":        in.Cidr,
+		"location_id": resolveLocationID(in.LocationID, in.HypervisorGroupID),
 	}
 	if in.Description != "" {
 		body["description"] = in.Description
@@ -139,7 +140,7 @@ func registerVPCTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{
 		Name: "user.vpc.create",
 		Description: "Create a VPC (isolated private network) and return it with its server-assigned id, " +
-			"VNI, and subnets.",
+			"VNI, and subnets." + locationIDAliasNote,
 	}, createVPC)
 
 	Register(s, deps, Spec{
