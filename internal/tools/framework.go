@@ -40,6 +40,14 @@ import (
 // client, so auth stays isolated behind that seam.
 type Deps struct {
 	TokenSource iaasauth.TokenSource
+
+	// RawAPI is the narrow escape hatch a handful of microVM settings tools
+	// use to call a platform endpoint the shared terraform-provider-iaas
+	// client does not implement yet - see
+	// internal/iaasauth.RawAPISource's docblock and
+	// internal/tools/microvm_settings.go. Every other tool ignores this
+	// field entirely.
+	RawAPI iaasauth.RawAPISource
 }
 
 // Spec is the static description of a tool: its wire name, its human/agent

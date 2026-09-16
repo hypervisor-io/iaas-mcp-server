@@ -37,15 +37,18 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	tokenSource := iaasauth.NewTokenSource(iaasauth.Config{
+	authCfg := iaasauth.Config{
 		APIEndpoint:    cfg.APIEndpoint,
 		RequestTimeout: cfg.RequestTimeout,
 		Insecure:       cfg.Insecure,
-	})
+	}
+	tokenSource := iaasauth.NewTokenSource(authCfg)
+	rawAPI := iaasauth.NewRawAPISource(authCfg)
 
 	handler := mcpserver.New(mcpserver.Options{
 		Version:     version,
 		TokenSource: tokenSource,
+		RawAPI:      rawAPI,
 	})
 
 	srv := &http.Server{

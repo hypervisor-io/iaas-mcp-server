@@ -96,15 +96,55 @@ type TokenSource func(ctx context.Context) (*client.Client, error)
 // bearer token varies per request).
 func NewTokenSource(cfg Config) TokenSource {
 	return func(ctx context.Context) (*client.Client, error) {
-		info := auth.TokenInfoFromContext(ctx)
-		if info == nil {
-			return nil, ErrNoToken
-		}
-		token, _ := info.Extra[tokenExtraKey].(string)
-		if token == "" {
-			return nil, ErrNoToken
+		token, err := tokenFromContext(ctx)
+		if err != nil {
+			return nil, err
 		}
 		return client.New(cfg.APIEndpoint, token, cfg.RequestTimeout, cfg.Insecure), nil
+	}
+}
+
+// tokenFromContext recovers the raw bearer token Verifier stashed on ctx, or
+// ErrNoToken. Shared by TokenSource and RawAPISource so the two seams never
+// drift on how the token is read back out.
+func tokenFromContext(ctx context.Context) (string, error) {
+	info := auth.TokenInfoFromContext(ctx)
+	if info == nil {
+		return "", ErrNoToken
+	}
+	token, _ := info.Extra[tokenExtraKey].(string)
+	if token == "" {
+		return "", ErrNoToken
+	}
+	return token, nil
+}
+
+// RawAPISource returns the platform API base URL, the current call's bearer
+// token, and the process-wide timeout/TLS settings - the same ingredients
+// TokenSource uses to build a *client.Client, exposed separately for tool
+// code that must call a platform endpoint the shared
+// terraform-provider-iaas client package does not implement yet.
+//
+// This is a deliberately narrow escape hatch: MV7-14 (contract C4/C8.6) needs
+// `GET/PUT /microvm/settings` before MV7-13 (the OpenTofu provider, built in
+// parallel from the same contract) has landed a matching
+// GetMicrovmSettings/UpdateMicrovmSettings method on client.Client - see
+// internal/tools/microvm_settings.go, the RawAPISource's one caller. Once
+// MV7-13 ships that client method (and this MCP server's go.mod picks up the
+// release that carries it), the settings tools should be rewritten onto the
+// standard Handler[In, Out]/Register shape like every other tool family, and
+// this type deleted.
+type RawAPISource func(ctx context.Context) (endpoint, token string, timeout time.Duration, insecure bool, err error)
+
+// NewRawAPISource returns the default RawAPISource, closed over the same
+// process-wide settings as NewTokenSource.
+func NewRawAPISource(cfg Config) RawAPISource {
+	return func(ctx context.Context) (string, string, time.Duration, bool, error) {
+		token, err := tokenFromContext(ctx)
+		if err != nil {
+			return "", "", 0, false, err
+		}
+		return cfg.APIEndpoint, token, cfg.RequestTimeout, cfg.Insecure, nil
 	}
 }
 

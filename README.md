@@ -113,6 +113,7 @@ sample (not exhaustive):
 | VPN | `user.vpn_gateway.create`, `user.vpn_gateway.add_peer`, `user.vpn_peering.create`, `user.vpn_gateway.peer_config` |
 | Autoscaling | `user.autoscaling_group.create`, `user.autoscaling_policy.create`, `user.autoscaling_group.pause` |
 | Compute add-ons | `user.image.create`, `user.docker_deployment.deploy_app`, `user.instance_backup_policy.create` |
+| MicroVMs | `user.microvm.create`, `user.microvm.list`, `user.microvm.image.create`, `user.microvm.settings.get`, `user.microvm.settings.set` |
 | Account / misc | `user.ssh_key.create`, `user.user_script.create`, `user.project.create`, `user.notification_channel.create`, `user.alert_rule.create` |
 | Catalog (read-only) | `user.catalog.locations`, `user.catalog.plans`, `user.catalog.images`, `user.catalog.k8s_versions` |
 | Admin (curated) | `admin.instance.list`, `admin.hypervisor.list`, `admin.hypervisor.set_maintenance`, `admin.rdns_request.process` |
