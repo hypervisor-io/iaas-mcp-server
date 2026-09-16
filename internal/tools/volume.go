@@ -25,7 +25,8 @@ func init() {
 type CreateVolumeInput struct {
 	Name              string `json:"name" jsonschema:"volume name"`
 	VolumePlanID      string `json:"volume_plan_id" jsonschema:"UUID of the volume plan (size/type)"`
-	HypervisorGroupID string `json:"hypervisor_group_id" jsonschema:"UUID of the hypervisor group (location)"`
+	LocationID        string `json:"location_id,omitempty" jsonschema:"UUID of the location (hypervisor group)"`
+	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 	ProjectID         string `json:"project_id,omitempty" jsonschema:"optional project UUID"`
 }
 
@@ -89,9 +90,9 @@ type SnapshotResult struct {
 
 func createVolume(ctx context.Context, cl *client.Client, in CreateVolumeInput) (VolumeResult, error) {
 	body := map[string]any{
-		"name":                in.Name,
-		"volume_plan_id":      in.VolumePlanID,
-		"hypervisor_group_id": in.HypervisorGroupID,
+		"name":           in.Name,
+		"volume_plan_id": in.VolumePlanID,
+		"location_id":    resolveLocationID(in.LocationID, in.HypervisorGroupID),
 	}
 	if in.ProjectID != "" {
 		body["project_id"] = in.ProjectID
@@ -239,7 +240,7 @@ func deleteVolumeSnapshot(ctx context.Context, cl *client.Client, in DeleteVolum
 func registerVolumeTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{
 		Name:        "user.volume.create",
-		Description: "Create a block volume and wait until it is available.",
+		Description: "Create a block volume and wait until it is available." + locationIDAliasNote,
 	}, createVolume)
 	Register(s, deps, Spec{Name: "user.volume.list", Description: "List all volumes owned by the caller."}, listVolumes)
 	Register(s, deps, Spec{Name: "user.volume.get", Description: "Get a volume by UUID."}, getVolume)

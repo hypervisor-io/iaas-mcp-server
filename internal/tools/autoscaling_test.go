@@ -49,7 +49,7 @@ func TestAutoscaling_GroupAndPolicy(t *testing.T) {
 	cs := connectSession(t, autoscalingMock())
 
 	res := callTool(t, cs, "user.autoscaling_group.create", map[string]any{
-		"name": "web", "hypervisor_group_id": "hg-1", "plan_id": "plan-1", "image_id": "img-1",
+		"name": "web", "location_id": "hg-1", "plan_id": "plan-1", "image_id": "img-1",
 	})
 	var group tools.AutoscalingGroupResult
 	unmarshalResult(t, res, &group)

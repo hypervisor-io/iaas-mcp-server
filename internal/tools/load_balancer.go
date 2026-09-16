@@ -32,7 +32,8 @@ type CreateLoadBalancerInput struct {
 	LBPlanID          string `json:"lb_plan_id" jsonschema:"UUID of the load balancer plan"`
 	VPCID             string `json:"vpc_id,omitempty" jsonschema:"optional VPC UUID"`
 	VPCSubnetID       string `json:"vpc_subnet_id,omitempty" jsonschema:"VPC subnet UUID (required with vpc_id)"`
-	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"hypervisor group UUID (required without vpc_id)"`
+	LocationID        string `json:"location_id,omitempty" jsonschema:"location (hypervisor group) UUID (required without vpc_id)"`
+	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 }
 
 type GetLoadBalancerInput struct {
@@ -197,8 +198,8 @@ func createLoadBalancer(ctx context.Context, cl *client.Client, in CreateLoadBal
 	if in.VPCSubnetID != "" {
 		body["vpc_subnet_id"] = in.VPCSubnetID
 	}
-	if in.HypervisorGroupID != "" {
-		body["hypervisor_group_id"] = in.HypervisorGroupID
+	if loc := resolveLocationID(in.LocationID, in.HypervisorGroupID); loc != "" {
+		body["location_id"] = loc
 	}
 	created, err := cl.CreateLoadBalancer(ctx, body)
 	if err != nil {
@@ -491,7 +492,7 @@ func deleteLBRoutingRule(ctx context.Context, cl *client.Client, in LBRuleDelete
 
 func registerLoadBalancerTools(s *mcp.Server, deps Deps) {
 	// Load balancer.
-	Register(s, deps, Spec{Name: "user.load_balancer.create", Description: "Create a load balancer and wait until it is active."}, createLoadBalancer)
+	Register(s, deps, Spec{Name: "user.load_balancer.create", Description: "Create a load balancer and wait until it is active." + locationIDAliasNote}, createLoadBalancer)
 	Register(s, deps, Spec{Name: "user.load_balancer.list", Description: "List all load balancers owned by the caller."}, listLoadBalancers)
 	Register(s, deps, Spec{Name: "user.load_balancer.get", Description: "Get a load balancer by UUID (with frontends, backends, certificates)."}, getLoadBalancer)
 	Register(s, deps, Spec{

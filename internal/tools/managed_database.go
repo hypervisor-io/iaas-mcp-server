@@ -32,7 +32,8 @@ type CreateManagedDatabaseInput struct {
 	DBPlanID          string `json:"db_plan_id" jsonschema:"UUID of the database plan"`
 	VPCID             string `json:"vpc_id" jsonschema:"UUID of the VPC"`
 	VPCSubnetID       string `json:"vpc_subnet_id" jsonschema:"UUID of the VPC subnet"`
-	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"optional hypervisor group UUID"`
+	LocationID        string `json:"location_id,omitempty" jsonschema:"optional location (hypervisor group) UUID"`
+	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 }
 
 type GetManagedDatabaseInput struct {
@@ -127,8 +128,8 @@ func createManagedDatabase(ctx context.Context, cl *client.Client, in CreateMana
 		"vpc_id":         in.VPCID,
 		"vpc_subnet_id":  in.VPCSubnetID,
 	}
-	if in.HypervisorGroupID != "" {
-		body["hypervisor_group_id"] = in.HypervisorGroupID
+	if loc := resolveLocationID(in.LocationID, in.HypervisorGroupID); loc != "" {
+		body["location_id"] = loc
 	}
 	return createManagedDatabaseAndWait(ctx, cl, func() (map[string]any, error) {
 		return cl.CreateManagedDatabase(ctx, body)
@@ -300,7 +301,7 @@ func deleteDBParameterGroup(ctx context.Context, cl *client.Client, in DeleteDBP
 
 func registerManagedDatabaseTools(s *mcp.Server, deps Deps) {
 	// Databases.
-	Register(s, deps, Spec{Name: "user.managed_database.create", Description: "Create a managed database and wait until it is active."}, createManagedDatabase)
+	Register(s, deps, Spec{Name: "user.managed_database.create", Description: "Create a managed database and wait until it is active." + locationIDAliasNote}, createManagedDatabase)
 	Register(s, deps, Spec{Name: "user.managed_database.list", Description: "List all managed databases owned by the caller."}, listManagedDatabases)
 	Register(s, deps, Spec{Name: "user.managed_database.get", Description: "Get a managed database by UUID."}, getManagedDatabase)
 	Register(s, deps, Spec{

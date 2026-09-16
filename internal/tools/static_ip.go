@@ -19,11 +19,12 @@ func init() {
 
 // ── inputs / outputs ────────────────────────────────────────────────────────
 
-// AllocateStaticIPInput reserves a static IP. ip_id and hypervisor_group_id are
+// AllocateStaticIPInput reserves a static IP. ip_id and location_id are
 // both required by the controller's AllocateRequest.
 type AllocateStaticIPInput struct {
 	IPID              string `json:"ip_id" jsonschema:"UUID of the pool IP to reserve"`
-	HypervisorGroupID string `json:"hypervisor_group_id" jsonschema:"UUID of the hypervisor group (location) to allocate in"`
+	LocationID        string `json:"location_id,omitempty" jsonschema:"UUID of the location (hypervisor group) to allocate in"`
+	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 }
 
 type GetStaticIPInput struct {
@@ -51,8 +52,8 @@ type StaticIPListResult struct {
 
 func allocateStaticIP(ctx context.Context, cl *client.Client, in AllocateStaticIPInput) (StaticIPResult, error) {
 	body := map[string]any{
-		"ip_id":               in.IPID,
-		"hypervisor_group_id": in.HypervisorGroupID,
+		"ip_id":       in.IPID,
+		"location_id": resolveLocationID(in.LocationID, in.HypervisorGroupID),
 	}
 	obj, err := cl.AllocateStaticIP(ctx, body)
 	if err != nil {
@@ -87,7 +88,7 @@ func deallocateStaticIP(ctx context.Context, cl *client.Client, in DeallocateSta
 func registerStaticIPTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{
 		Name:        "user.static_ip.allocate",
-		Description: "Allocate (reserve) a static IP in a hypervisor group.",
+		Description: "Allocate (reserve) a static IP in a location." + locationIDAliasNote,
 	}, allocateStaticIP)
 
 	Register(s, deps, Spec{

@@ -85,7 +85,7 @@ func TestKubernetes_ClusterConvergesAndChildren(t *testing.T) {
 	cs := connectSession(t, kubernetesMock())
 
 	res := callTool(t, cs, "user.kubernetes_cluster.create", map[string]any{
-		"name": "prod", "slug": "prod", "hypervisor_group_id": "hg-1", "vpc_id": "vpc-1",
+		"name": "prod", "slug": "prod", "location_id": "hg-1", "vpc_id": "vpc-1",
 		"cp_vpc_subnet_id": "sub-1", "worker_vpc_subnet_id": "sub-2", "kubernetes_version_id": "kv-1",
 		"control_node_count": 1, "endpoint_mode": "private", "cp_instance_plan_id": "cp-1",
 		"cp_lb_plan_id": "lb-1", "worker_instance_plan_id": "wk-1",

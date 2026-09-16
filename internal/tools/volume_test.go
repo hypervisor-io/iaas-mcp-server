@@ -88,7 +88,7 @@ func TestVolume_CreateConvergesAndActions(t *testing.T) {
 	cs := connectSession(t, volumeMock())
 
 	res := callTool(t, cs, "user.volume.create", map[string]any{
-		"name": "data", "volume_plan_id": "vp-1", "hypervisor_group_id": "hg-1",
+		"name": "data", "volume_plan_id": "vp-1", "location_id": "hg-1",
 	})
 	var created tools.VolumeResult
 	unmarshalResult(t, res, &created)

@@ -102,7 +102,7 @@ func TestLoadBalancer_CreateConvergesAndChildren(t *testing.T) {
 	rec := newBodyRecorder()
 	cs := connectSession(t, loadBalancerMock(rec))
 
-	res := callTool(t, cs, "user.load_balancer.create", map[string]any{"name": "web", "lb_plan_id": "lp-1", "hypervisor_group_id": "hg-1"})
+	res := callTool(t, cs, "user.load_balancer.create", map[string]any{"name": "web", "lb_plan_id": "lp-1", "location_id": "hg-1"})
 	var lb tools.LoadBalancerResult
 	unmarshalResult(t, res, &lb)
 	if lb.LoadBalancer["id"] != "lb-1" || lb.LoadBalancer["status"] != "active" {
