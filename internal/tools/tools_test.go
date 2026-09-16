@@ -234,6 +234,14 @@ func connectSession(t *testing.T, handler http.Handler) *mcp.ClientSession {
 		TokenSource: func(_ context.Context) (*client.Client, error) {
 			return client.New(mock.URL, "test-token", 2*time.Second, false), nil
 		},
+		// Parallels TokenSource above for the microVM settings tools' raw-HTTP
+		// escape hatch (internal/iaasauth.RawAPISource) - same mock server,
+		// same fake token, ignoring ctx exactly like the stub above (this
+		// in-memory transport never runs the real bearer-auth middleware, so
+		// ctx never carries a real auth.TokenInfo).
+		RawAPI: func(_ context.Context) (string, string, time.Duration, bool, error) {
+			return mock.URL, "test-token", 2 * time.Second, false, nil
+		},
 	}
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "iaas-mcp-server", Version: "test"}, nil)

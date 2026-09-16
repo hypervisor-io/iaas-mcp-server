@@ -37,6 +37,13 @@ type Options struct {
 	// yet, but it is threaded through newServer now so Phase 2 only has to add
 	// mcp.AddTool calls there, not rewire construction.
 	TokenSource iaasauth.TokenSource
+
+	// RawAPI is the same per-request bearer token plus the process-wide
+	// endpoint/timeout/TLS settings, exposed separately for the handful of
+	// microVM settings tools that call a platform endpoint the shared
+	// terraform-provider-iaas client does not implement yet - see
+	// iaasauth.RawAPISource's docblock.
+	RawAPI iaasauth.RawAPISource
 }
 
 // New builds the top-level http.Handler for the process: the MCP
@@ -86,7 +93,7 @@ func newServer(opts Options) *mcp.Server {
 		Version: opts.Version,
 	}, nil)
 
-	tools.RegisterAll(server, tools.Deps{TokenSource: opts.TokenSource})
+	tools.RegisterAll(server, tools.Deps{TokenSource: opts.TokenSource, RawAPI: opts.RawAPI})
 
 	return server
 }

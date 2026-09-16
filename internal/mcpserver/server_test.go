@@ -10,12 +10,14 @@ import (
 )
 
 func testOptions() Options {
+	cfg := iaasauth.Config{
+		APIEndpoint:    "https://panel.example.com/api",
+		RequestTimeout: 5 * time.Second,
+	}
 	return Options{
-		Version: "test",
-		TokenSource: iaasauth.NewTokenSource(iaasauth.Config{
-			APIEndpoint:    "https://panel.example.com/api",
-			RequestTimeout: 5 * time.Second,
-		}),
+		Version:     "test",
+		TokenSource: iaasauth.NewTokenSource(cfg),
+		RawAPI:      iaasauth.NewRawAPISource(cfg),
 	}
 }
 
