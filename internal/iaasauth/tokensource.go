@@ -125,15 +125,22 @@ func tokenFromContext(ctx context.Context) (string, error) {
 // code that must call a platform endpoint the shared
 // terraform-provider-iaas client package does not implement yet.
 //
-// This is a deliberately narrow escape hatch: MV7-14 (contract C4/C8.6) needs
-// `GET/PUT /microvm/settings` before MV7-13 (the OpenTofu provider, built in
-// parallel from the same contract) has landed a matching
-// GetMicrovmSettings/UpdateMicrovmSettings method on client.Client - see
-// internal/tools/microvm_settings.go, the RawAPISource's one caller. Once
-// MV7-13 ships that client method (and this MCP server's go.mod picks up the
-// release that carries it), the settings tools should be rewritten onto the
-// standard Handler[In, Out]/Register shape like every other tool family, and
-// this type deleted.
+// This is a deliberately narrow escape hatch, used only where a tool needs
+// an endpoint the shared terraform-provider-iaas client does not implement
+// yet because it is being built in parallel from the same API contract:
+//
+//   - internal/tools/microvm_settings.go: MV7-14 (contract C4/C8.6) needs
+//     `GET/PUT /microvm/settings` before MV7-13 (the OpenTofu provider)
+//     lands a matching GetMicrovmSettings/UpdateMicrovmSettings method on
+//     client.Client.
+//   - internal/tools/certificate.go (replaceCertificate): NUI-V-R17-ACM-ROTATE3
+//     needs `PUT /certificates/{id}` before ROTATE2 (the OpenTofu provider)
+//     lands a matching ReplaceCertificate method on client.Client.
+//
+// Once the matching client.Client method ships (and this MCP server's
+// go.mod picks up the release that carries it), rewrite the affected tool
+// onto the standard Handler[In, Out]/Register shape like every other tool
+// family. Delete this type only once every caller has been migrated off it.
 type RawAPISource func(ctx context.Context) (endpoint, token string, timeout time.Duration, insecure bool, err error)
 
 // NewRawAPISource returns the default RawAPISource, closed over the same

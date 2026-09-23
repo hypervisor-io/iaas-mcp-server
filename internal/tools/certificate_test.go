@@ -94,6 +94,58 @@ func certificateMock() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "Certificate deleted."})
 	})
 
+	// PUT /certificates/{id} - contract per NUI-V-R17-ACM-ROTATE1: rotates a
+	// manual certificate's PEM material in place and re-syncs every load
+	// balancer that references it, reporting outcomes in resync[]. 422s carry
+	// a "code" alongside "message" for the not-manual case; the parse-failure
+	// case is modeled message-only to prove certificateResponseError degrades
+	// cleanly when no code is present.
+	mux.HandleFunc("PUT /certificates/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+
+		switch id {
+		case "missing":
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "Certificate not found."})
+		case "cert-le-1":
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"code":    "certificate_replace_not_manual",
+				"message": "This certificate was issued via Let's Encrypt and cannot be manually replaced.",
+			})
+		case "cert-badpem":
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"message": "The certificate could not be parsed.",
+				"errors":  map[string]any{"certificate": []string{"The certificate could not be parsed."}},
+			})
+		case "cert-keymismatch":
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"code":    "certificate_key_mismatch",
+				"message": "The private key does not match the certificate.",
+			})
+		default:
+			name := body["name"]
+			if name == nil || name == "" {
+				name = "example"
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"success": true,
+				"certificate": map[string]any{
+					"id":                 id,
+					"name":               name,
+					"domain":             "example.test",
+					"type":               "manual",
+					"status":             "active",
+					"fingerprint_sha256": "DD:EE:FF",
+				},
+				"resync": []any{
+					map[string]any{"id": "lb-1", "name": "web-lb", "success": true},
+					map[string]any{"id": "lb-2", "name": "cluster-lb", "success": false, "error": "sync failed: node unreachable"},
+				},
+			})
+		}
+	})
+
 	return mux
 }
 
@@ -197,5 +249,119 @@ func TestCertificate_DeleteInUseFailure(t *testing.T) {
 	res := callTool(t, cs, "user.certificate.delete", map[string]any{"id": "in-use", "confirm": true})
 	if !res.IsError || !strings.Contains(resultText(t, res), "in use") {
 		t.Errorf("delete in-use: want an 'in use' error, got %q", resultText(t, res))
+	}
+}
+
+func TestCertificate_Replace(t *testing.T) {
+	cs := connectSession(t, certificateMock())
+
+	res := callTool(t, cs, "user.certificate.replace", map[string]any{
+		"id":          "cert-1",
+		"name":        "rotated",
+		"certificate": "-----BEGIN CERTIFICATE-----\nMIIB...NEW\n-----END CERTIFICATE-----",
+		"private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...NEW\n-----END PRIVATE KEY-----",
+	})
+	if res.IsError {
+		t.Fatalf("replace failed: %s", resultText(t, res))
+	}
+	var out tools.ReplaceCertificateResult
+	unmarshalResult(t, res, &out)
+
+	if out.Certificate["id"] != "cert-1" {
+		t.Errorf("replace kept id = %v, want cert-1 (rotation must not mint a new id)", out.Certificate["id"])
+	}
+	if out.Certificate["name"] != "rotated" {
+		t.Errorf("replace name = %v, want rotated", out.Certificate["name"])
+	}
+	if out.Certificate["fingerprint_sha256"] != "DD:EE:FF" {
+		t.Errorf("replace fingerprint_sha256 = %v, want the rotated value DD:EE:FF", out.Certificate["fingerprint_sha256"])
+	}
+	for _, stray := range []string{"certificate", "private_key", "chain"} {
+		if _, present := out.Certificate[stray]; present {
+			t.Errorf("replace result must NOT include %q; got %v", stray, out.Certificate)
+		}
+	}
+
+	if len(out.Resync) != 2 {
+		t.Fatalf("resync count = %d, want 2", len(out.Resync))
+	}
+	byID := map[string]tools.CertificateResyncEntry{}
+	for _, e := range out.Resync {
+		byID[e.ID] = e
+	}
+	ok, present := byID["lb-1"]
+	if !present || !ok.Success || ok.Name != "web-lb" {
+		t.Errorf("resync[lb-1] = %+v, want a successful entry named web-lb", ok)
+	}
+	failed, present := byID["lb-2"]
+	if !present || failed.Success || failed.Error == "" {
+		t.Errorf("resync[lb-2] = %+v, want a failed entry carrying error", failed)
+	}
+}
+
+func TestCertificate_ReplaceNotManualIsValidationError(t *testing.T) {
+	cs := connectSession(t, certificateMock())
+
+	res := callTool(t, cs, "user.certificate.replace", map[string]any{
+		"id":          "cert-le-1",
+		"certificate": "-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----",
+		"private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
+	})
+	if !res.IsError {
+		t.Fatalf("replace on a Let's Encrypt certificate should fail")
+	}
+	text := resultText(t, res)
+	if !strings.Contains(text, "validation failed") {
+		t.Errorf("replace not-manual: want a validation failed error, got %q", text)
+	}
+	if !strings.Contains(text, "certificate_replace_not_manual") {
+		t.Errorf("replace not-manual: want the certificate_replace_not_manual code surfaced, got %q", text)
+	}
+}
+
+func TestCertificate_ReplaceParseFailureIsValidationError(t *testing.T) {
+	cs := connectSession(t, certificateMock())
+
+	res := callTool(t, cs, "user.certificate.replace", map[string]any{
+		"id":          "cert-badpem",
+		"certificate": "not a pem",
+		"private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
+	})
+	if !res.IsError {
+		t.Fatalf("replace with an unparseable certificate should fail")
+	}
+	text := resultText(t, res)
+	if !strings.Contains(text, "validation failed") || !strings.Contains(text, "parsed") {
+		t.Errorf("replace parse failure: want a validation failed error mentioning parsing, got %q", text)
+	}
+}
+
+func TestCertificate_ReplaceKeyMismatchIsValidationError(t *testing.T) {
+	cs := connectSession(t, certificateMock())
+
+	res := callTool(t, cs, "user.certificate.replace", map[string]any{
+		"id":          "cert-keymismatch",
+		"certificate": "-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----",
+		"private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...WRONG\n-----END PRIVATE KEY-----",
+	})
+	if !res.IsError {
+		t.Fatalf("replace with a mismatched key should fail")
+	}
+	text := resultText(t, res)
+	if !strings.Contains(text, "certificate_key_mismatch") || !strings.Contains(text, "does not match") {
+		t.Errorf("replace key mismatch: want the certificate_key_mismatch code and message, got %q", text)
+	}
+}
+
+func TestCertificate_ReplaceNotFoundCrossTenant(t *testing.T) {
+	cs := connectSession(t, certificateMock())
+
+	res := callTool(t, cs, "user.certificate.replace", map[string]any{
+		"id":          "missing",
+		"certificate": "-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----",
+		"private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
+	})
+	if !res.IsError || !strings.Contains(resultText(t, res), "not found") {
+		t.Errorf("replace unknown/cross-tenant id: want not found, got %q", resultText(t, res))
 	}
 }
