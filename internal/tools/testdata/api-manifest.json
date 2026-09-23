@@ -7483,6 +7483,20 @@
             }
         },
         {
+            "id": "user PUT /api/certificate/{user_certificateId}",
+            "method": "PUT",
+            "path": "/api/certificate/{user_certificateId}",
+            "surface": "user",
+            "opentofu": {
+                "status": "covered",
+                "type": "iaas_certificate"
+            },
+            "mcp": {
+                "status": "covered",
+                "tool": "user.certificate.replace"
+            }
+        },
+        {
             "id": "user POST /api/certificate/{user_certificateId}/retry",
             "method": "POST",
             "path": "/api/certificate/{user_certificateId}/retry",

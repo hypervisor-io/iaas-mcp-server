@@ -29,8 +29,10 @@ import (
 // any response.
 //
 // user.certificate.replace (NUI-V-R17-ACM-ROTATE3) rotates a manually
-// uploaded certificate's PEM material IN PLACE via PUT /certificates/{id}
-// (NUI-V-R17-ACM-ROTATE1) - the id, and therefore every OpenTofu
+// uploaded certificate's PEM material IN PLACE via PUT /certificate/{id}
+// (SINGULAR "certificate", matching the existing show/retry/destroy
+// convention - NUI-V-R17-ACM-ROTATE1, landed Master 5167436db) - the id,
+// and therefore every OpenTofu
 // iaas_certificate resource's state and every Kubernetes-bridge reference,
 // survives the rotation, unlike delete+re-upload. The shared
 // terraform-provider-iaas client package does not implement this endpoint
@@ -98,10 +100,12 @@ type DeleteCertificateInput struct {
 // material in place, keeping its id. Mirrors UploadCertificateInput's schema
 // (certificate + private_key required, chain optional) plus id; name is
 // optional here (unlike upload) since a rotation commonly keeps the existing
-// display name. Refused with a 422 when id names a Let's Encrypt-issued
-// certificate (those renew themselves - use user.certificate.retry for a
-// stuck renewal), when certificate/chain fails to parse, or when private_key
-// does not match certificate.
+// display name. Refused with a 422 - message-only, no machine-readable code
+// (see certificateResponseError) - for any of: id names a Let's
+// Encrypt-issued certificate (those renew themselves - use
+// user.certificate.retry for a stuck renewal), private_key does not match
+// certificate, certificate has already expired, or chain does not match
+// certificate (issuer mismatch) / certificate or chain is not valid PEM.
 type ReplaceCertificateInput struct {
 	ID          string `json:"id" jsonschema:"UUID of the certificate to replace"`
 	Name        string `json:"name,omitempty" jsonschema:"optional new display name for the certificate"`
@@ -220,7 +224,10 @@ func replaceCertificate(ctx context.Context, raw iaasauth.RawAPISource, in Repla
 		body["name"] = in.Name
 	}
 
-	top, err := certificateRawRequest(ctx, raw, http.MethodPut, "/certificates/"+url.PathEscape(in.ID), body)
+	// NUI-V-R17-ACM-ROTATE1 landed on the SINGULAR "/certificate/{id}" path,
+	// matching the existing show/retry/destroy convention (list/upload/
+	// letsencrypt stay on the plural "/certificates" collection route).
+	top, err := certificateRawRequest(ctx, raw, http.MethodPut, "/certificate/"+url.PathEscape(in.ID), body)
 	if err != nil {
 		return ReplaceCertificateResult{}, err
 	}
@@ -306,9 +313,10 @@ func registerCertificateTools(s *mcp.Server, deps Deps) {
 			"private_key, optional chain and optional name - keeping its id so every load balancer, OpenTofu " +
 			"iaas_certificate resource and Kubernetes-bridge reference stays valid. Every load balancer that " +
 			"references the certificate is re-synced afterwards; per-load-balancer outcomes come back in resync " +
-			"and a sync failure there does not fail the call. Refused with a 422 when id names a Let's " +
-			"Encrypt-issued certificate (those renew themselves; use user.certificate.retry for a stuck renewal), " +
-			"when certificate/chain fails to parse, or when private_key does not match certificate.",
+			"and a sync failure there does not fail the call. Refused with a message-only 422 when id names a " +
+			"Let's Encrypt-issued certificate (those renew themselves; use user.certificate.retry for a stuck " +
+			"renewal), when private_key does not match certificate, when certificate has already expired, or " +
+			"when chain does not match certificate or either is not valid PEM.",
 	}, func(ctx context.Context, _ *client.Client, in ReplaceCertificateInput) (ReplaceCertificateResult, error) {
 		return replaceCertificate(ctx, raw, in)
 	})
@@ -384,10 +392,19 @@ func certificateRawRequest(ctx context.Context, raw iaasauth.RawAPISource, metho
 
 // certificateResponseError mirrors client's private responseError closely
 // enough for MapError to behave identically: 2xx -> nil, 422 -> FieldErrors
-// from {"errors":{...}} with a top-level "code" (when the API sends one,
-// e.g. certificate_replace_not_manual) folded into the message so an agent
-// can act on it, 401/403 -> the same IP-lock hint text, others -> the body's
-// "message"/"error" or a status default.
+// from {"errors":{...}} (rarely populated here - CertificateController's
+// replace() catches InvalidArgumentException/DomainException and returns
+// plain {success:false, message}, with NO machine-readable code field; the
+// four 422 cases - not a manual/Let's Encrypt certificate, key/cert
+// mismatch, expired certificate, chain/issuer mismatch - are distinguished
+// only by that message text, e.g. "Only a manually uploaded certificate can
+// be replaced...", "The private key does not match the certificate.", "The
+// certificate has already expired.", "The CA bundle does not match the
+// certificate (issuer mismatch)."), 401/403 -> the same IP-lock hint text,
+// others -> the body's "message"/"error" or a status default. The framework
+// surfaces every 422 uniformly as "validation failed: <message>"
+// (MapError) - callers that need to branch on WHICH case occurred match the
+// message text; there is nothing more structured to match on.
 func certificateResponseError(resp *http.Response, body []byte) error {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
@@ -401,7 +418,6 @@ func certificateResponseError(resp *http.Response, body []byte) error {
 	var parsed struct {
 		Message string                     `json:"message"`
 		Error   string                     `json:"error"`
-		Code    string                     `json:"code"`
 		Errors  map[string]json.RawMessage `json:"errors"`
 	}
 	_ = json.Unmarshal(body, &parsed)
@@ -415,9 +431,6 @@ func certificateResponseError(resp *http.Response, body []byte) error {
 		if msg == "" {
 			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 		}
-	}
-	if parsed.Code != "" {
-		msg = fmt.Sprintf("[%s] %s", parsed.Code, msg)
 	}
 
 	switch resp.StatusCode {

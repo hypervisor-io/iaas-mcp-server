@@ -94,13 +94,16 @@ func certificateMock() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "Certificate deleted."})
 	})
 
-	// PUT /certificates/{id} - contract per NUI-V-R17-ACM-ROTATE1: rotates a
+	// PUT /certificate/{id} (SINGULAR - matches show/retry/destroy) - contract
+	// per NUI-V-R17-ACM-ROTATE1 as landed (Master 5167436db): rotates a
 	// manual certificate's PEM material in place and re-syncs every load
-	// balancer that references it, reporting outcomes in resync[]. 422s carry
-	// a "code" alongside "message" for the not-manual case; the parse-failure
-	// case is modeled message-only to prove certificateResponseError degrades
-	// cleanly when no code is present.
-	mux.HandleFunc("PUT /certificates/{id}", func(w http.ResponseWriter, r *http.Request) {
+	// balancer that references it, reporting outcomes in resync[]. Every 422
+	// is plain {success:false, message} with NO machine-readable code field -
+	// CertificateController::replace() catches InvalidArgumentException/
+	// DomainException and returns only the exception message
+	// (app/Services/CertificateService.php); these four cases and their
+	// exact message text are transcribed from that source.
+	mux.HandleFunc("PUT /certificate/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -110,18 +113,23 @@ func certificateMock() http.Handler {
 			writeJSON(w, http.StatusNotFound, map[string]any{"message": "Certificate not found."})
 		case "cert-le-1":
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
-				"code":    "certificate_replace_not_manual",
-				"message": "This certificate was issued via Let's Encrypt and cannot be manually replaced.",
-			})
-		case "cert-badpem":
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
-				"message": "The certificate could not be parsed.",
-				"errors":  map[string]any{"certificate": []string{"The certificate could not be parsed."}},
+				"success": false,
+				"message": "Only a manually uploaded certificate can be replaced — Let's Encrypt certificates renew automatically.",
 			})
 		case "cert-keymismatch":
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
-				"code":    "certificate_key_mismatch",
+				"success": false,
 				"message": "The private key does not match the certificate.",
+			})
+		case "cert-expired":
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"success": false,
+				"message": "The certificate has already expired.",
+			})
+		case "cert-chainmismatch":
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"success": false,
+				"message": "The CA bundle does not match the certificate (issuer mismatch).",
 			})
 		default:
 			name := body["name"]
@@ -314,25 +322,8 @@ func TestCertificate_ReplaceNotManualIsValidationError(t *testing.T) {
 	if !strings.Contains(text, "validation failed") {
 		t.Errorf("replace not-manual: want a validation failed error, got %q", text)
 	}
-	if !strings.Contains(text, "certificate_replace_not_manual") {
-		t.Errorf("replace not-manual: want the certificate_replace_not_manual code surfaced, got %q", text)
-	}
-}
-
-func TestCertificate_ReplaceParseFailureIsValidationError(t *testing.T) {
-	cs := connectSession(t, certificateMock())
-
-	res := callTool(t, cs, "user.certificate.replace", map[string]any{
-		"id":          "cert-badpem",
-		"certificate": "not a pem",
-		"private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
-	})
-	if !res.IsError {
-		t.Fatalf("replace with an unparseable certificate should fail")
-	}
-	text := resultText(t, res)
-	if !strings.Contains(text, "validation failed") || !strings.Contains(text, "parsed") {
-		t.Errorf("replace parse failure: want a validation failed error mentioning parsing, got %q", text)
+	if !strings.Contains(text, "Only a manually uploaded certificate can be replaced") {
+		t.Errorf("replace not-manual: want the API's message text surfaced, got %q", text)
 	}
 }
 
@@ -348,8 +339,43 @@ func TestCertificate_ReplaceKeyMismatchIsValidationError(t *testing.T) {
 		t.Fatalf("replace with a mismatched key should fail")
 	}
 	text := resultText(t, res)
-	if !strings.Contains(text, "certificate_key_mismatch") || !strings.Contains(text, "does not match") {
-		t.Errorf("replace key mismatch: want the certificate_key_mismatch code and message, got %q", text)
+	if !strings.Contains(text, "validation failed") || !strings.Contains(text, "The private key does not match the certificate") {
+		t.Errorf("replace key mismatch: want a validation failed error with the API's message text, got %q", text)
+	}
+}
+
+func TestCertificate_ReplaceExpiredIsValidationError(t *testing.T) {
+	cs := connectSession(t, certificateMock())
+
+	res := callTool(t, cs, "user.certificate.replace", map[string]any{
+		"id":          "cert-expired",
+		"certificate": "-----BEGIN CERTIFICATE-----\nMIIB...EXPIRED\n-----END CERTIFICATE-----",
+		"private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
+	})
+	if !res.IsError {
+		t.Fatalf("replace with an expired certificate should fail")
+	}
+	text := resultText(t, res)
+	if !strings.Contains(text, "validation failed") || !strings.Contains(text, "The certificate has already expired") {
+		t.Errorf("replace expired: want a validation failed error with the API's message text, got %q", text)
+	}
+}
+
+func TestCertificate_ReplaceChainMismatchIsValidationError(t *testing.T) {
+	cs := connectSession(t, certificateMock())
+
+	res := callTool(t, cs, "user.certificate.replace", map[string]any{
+		"id":          "cert-chainmismatch",
+		"certificate": "-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----",
+		"private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
+		"chain":       "-----BEGIN CERTIFICATE-----\nMIIC...WRONGCA\n-----END CERTIFICATE-----",
+	})
+	if !res.IsError {
+		t.Fatalf("replace with a mismatched chain should fail")
+	}
+	text := resultText(t, res)
+	if !strings.Contains(text, "validation failed") || !strings.Contains(text, "issuer mismatch") {
+		t.Errorf("replace chain mismatch: want a validation failed error with the API's message text, got %q", text)
 	}
 }
 
