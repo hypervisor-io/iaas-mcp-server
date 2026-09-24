@@ -90,6 +90,14 @@ type ForgeEnableInput struct {
 	DiskIDs []string `json:"disk_ids" jsonschema:"UUIDs of the disks to place under Forge"`
 }
 
+// InstanceRescueInput is user.instance.rescue's arguments: one tool for both
+// directions (NUI-V-R18-RESCUE1-TRISYNC), matching POST /instance/{id}/rescue
+// body {enable: bool} exactly (Master 8eb77dcfe).
+type InstanceRescueInput struct {
+	ID     string `json:"id" jsonschema:"UUID of the instance"`
+	Enable bool   `json:"enable" jsonschema:"true to enter rescue mode (boots a rescue ISO with a generated root password, KVM only), false to exit and restore the previous boot configuration"`
+}
+
 // ── handlers ─────────────────────────────────────────────────────────────────
 
 func deployInstanceTool(ctx context.Context, cl *client.Client, in InstanceDeployInput) (InstanceResult, error) {
@@ -242,6 +250,18 @@ func instanceDeployImages(ctx context.Context, cl *client.Client, in InstanceIDI
 	return objectResult(cl.GetInstanceDeployImages(ctx, in.ID))
 }
 
+// instanceRescue enters or exits rescue mode. Returned as-is (no task wait,
+// unlike deployAndWait): the endpoint's response body already carries
+// {success,message,task_id,rescue:{active,since,username,password}} in one
+// shot (InstanceService::rescue(), Master 8eb77dcfe) and the caller can poll
+// the instance/task separately if they want to wait for the power-cycle to
+// finish - the same "return the queued/immediate result" shape as
+// instanceISOAction/forgeEnable/instanceDiskAction, not the
+// wait-until-deployed shape of deployInstanceTool.
+func instanceRescue(ctx context.Context, cl *client.Client, in InstanceRescueInput) (ObjectResult, error) {
+	return objectResult(cl.RescueInstance(ctx, in.ID, in.Enable))
+}
+
 func registerInstanceOpsTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.instance.deploy", Description: "Deploy (or redeploy) an OS image onto an instance and wait until deployed."}, deployInstanceTool)
 	Register(s, deps, Spec{Name: "user.instance.self_deploy", Description: "Rebuild a self-provisioned instance from an image and wait until deployed."}, selfDeployInstance)
@@ -273,4 +293,12 @@ func registerInstanceOpsTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.instance.forge_enable", Description: "Enable Forge layered snapshots on an instance's disks."}, forgeEnable)
 	Register(s, deps, Spec{Name: "user.instance.forge_commit", Description: "Commit the current Forge layer on an instance."}, forgeCommit)
 	Register(s, deps, Spec{Name: "user.instance.forge_discard", Description: "Discard the current Forge layer on an instance."}, forgeDiscard)
+
+	Register(s, deps, Spec{
+		Name: "user.instance.rescue",
+		Description: "Enter or exit rescue mode on a KVM instance: enable:true boots a rescue ISO with a " +
+			"generated root password (requires the instance to be deployed, not suspended, not migrating, " +
+			"without an active Forge session or another task in flight; unsupported on Proxmox); " +
+			"enable:false exits and restores the previous boot configuration.",
+	}, instanceRescue)
 }
