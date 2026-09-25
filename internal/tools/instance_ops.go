@@ -228,6 +228,15 @@ func instanceISOAction(ctx context.Context, cl *client.Client, in InstanceISOAct
 	return objectResult(cl.InstanceISOAction(ctx, in.ID, in.Device, in.Action, body))
 }
 
+// forgeStatus is a READ tool (NUI-V-R19-FORGE1): whether Forge is currently
+// active, and the latest session (falls back to the latest session of any
+// status - including "failed" - when none is currently active/transitioning,
+// so a failed session is still readable instead of the caller getting no
+// signal at all).
+func forgeStatus(ctx context.Context, cl *client.Client, in InstanceIDInput) (ObjectResult, error) {
+	return objectResult(cl.ForgeStatus(ctx, in.ID))
+}
+
 func forgeEnable(ctx context.Context, cl *client.Client, in ForgeEnableInput) (ObjectResult, error) {
 	return objectResult(cl.ForgeEnable(ctx, in.ID, map[string]any{"disk_ids": in.DiskIDs}))
 }
@@ -290,6 +299,7 @@ func registerInstanceOpsTools(s *mcp.Server, deps Deps) {
 
 	Register(s, deps, Spec{Name: "user.instance.iso_action", Description: "Insert or eject an ISO on an instance's primary/secondary device."}, instanceISOAction)
 
+	Register(s, deps, Spec{Name: "user.instance.forge", Description: "Read an instance's Forge session state: whether Forge is currently active, and the latest session (including a failed one, with its error)."}, forgeStatus)
 	Register(s, deps, Spec{Name: "user.instance.forge_enable", Description: "Enable Forge layered snapshots on an instance's disks."}, forgeEnable)
 	Register(s, deps, Spec{Name: "user.instance.forge_commit", Description: "Commit the current Forge layer on an instance."}, forgeCommit)
 	Register(s, deps, Spec{Name: "user.instance.forge_discard", Description: "Discard the current Forge layer on an instance."}, forgeDiscard)
