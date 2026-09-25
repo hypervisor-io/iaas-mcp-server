@@ -17,3 +17,9 @@ require (
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 )
+
+// TEMPORARY (NUI-V-R20-VER1): local replace so this repo can build against
+// the terraform-provider-iaas client's new GetPlatformVersion method before
+// that commit is pushed. The planner re-pins to a real pseudo-version and
+// removes this replace after the provider repo is pushed.
+replace github.com/hypervisor-io/terraform-provider-iaas => ../terraform-provider-iaas
