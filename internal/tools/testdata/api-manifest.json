@@ -13336,6 +13336,20 @@
       }
     },
     {
+      "id": "user GET /api/webhook-event-kinds",
+      "method": "GET",
+      "path": "/api/webhook-event-kinds",
+      "surface": "user",
+      "opentofu": {
+        "status": "covered",
+        "type": "iaas_webhook_event_kinds"
+      },
+      "mcp": {
+        "status": "covered",
+        "tool": "user.webhook.event_kinds"
+      }
+    },
+    {
       "id": "user DELETE /api/webhook-subscription/{user_webhookSubscriptionId}",
       "method": "DELETE",
       "path": "/api/webhook-subscription/{user_webhookSubscriptionId}",
