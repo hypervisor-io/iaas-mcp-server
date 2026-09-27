@@ -2,7 +2,8 @@ package tools
 
 import (
 	"fmt"
-	"net"
+	"regexp"
+	"strconv"
 )
 
 // This file holds tool-side input validation that mirrors server-side
@@ -92,26 +93,70 @@ func validateVpnPeerUpdateStrings(name, publicKey, endpoint *string, allowedIPs 
 	return validateNoControlCharactersEach("allowed_ips", allowedIPs)
 }
 
+// ipv4CIDRPattern is a direct port of the Master repo's server-side rule
+// (app/Rules/Ipv4Cidr.php): four decimal octets and a decimal prefix,
+// separated by "." and "/", ASCII digits only ([0-9], never a Unicode
+// digit lookalike). Each captured segment is re-checked below for range
+// and leading-zero. This deliberately does NOT use net.ParseCIDR: that
+// accepts a leading-zero prefix (net.ParseCIDR("10.0.0.0/08", ...) is
+// valid Go, but the server's regex requires no leading zero) and an
+// IPv4-mapped IPv6 literal (::ffff:10.0.0.0/120, whose IP.To4() is
+// non-nil even though the server's regex never matches it at all).
+var ipv4CIDRPattern = regexp.MustCompile(`^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})/([0-9]{1,2})$`)
+
+// isValidIPv4CIDRSegment reports whether s is a decimal integer with no
+// leading zero (unless s is exactly "0") that does not exceed max -
+// mirrors Ipv4Cidr::isValid()'s per-segment check:
+// `(string) (int) $octet !== $octet || (int) $octet > 255`.
+func isValidIPv4CIDRSegment(s string, max int) bool {
+	if len(s) > 1 && s[0] == '0' {
+		return false
+	}
+
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return false
+	}
+
+	return n <= max
+}
+
+// isValidIPv4CIDR is a direct port of App\Rules\Ipv4Cidr::isValid() in the
+// Master repo, so MCP tool-side validation accepts EXACTLY what the API's
+// own server-side request validation accepts: four octets 0-255 with no
+// leading zero, a prefix 0-32 with no leading zero, and nothing else in
+// the string. Host bits set are allowed (10.0.0.1/24 is valid).
+func isValidIPv4CIDR(value string) bool {
+	m := ipv4CIDRPattern.FindStringSubmatch(value)
+	if m == nil {
+		return false
+	}
+
+	for _, octet := range m[1:5] {
+		if !isValidIPv4CIDRSegment(octet, 255) {
+			return false
+		}
+	}
+
+	return isValidIPv4CIDRSegment(m[5], 32)
+}
+
 // validateIPv4CIDR requires value to be a strict IPv4 CIDR block (a.b.c.d/p,
-// prefix 0-32), matching the tunnel_subnet/cidr contract enforced server-side
-// for VPN gateway deploy and VPC create. An empty value is not an error here -
-// the caller decides whether the field is required (tunnel_subnet defaults
+// octets 0-255 with no leading zero, prefix 0-32 with no leading zero),
+// matching the tunnel_subnet/cidr contract enforced server-side for VPN
+// gateway deploy and VPC create. An empty value is not an error here - the
+// caller decides whether the field is required (tunnel_subnet defaults
 // server-side when omitted).
 func validateIPv4CIDR(field, value string) error {
 	if value == "" {
 		return nil
 	}
 
-	ip, ipNet, err := net.ParseCIDR(value)
-	if err != nil || ipNet == nil {
+	if !isValidIPv4CIDR(value) {
 		return fmt.Errorf(
-			"%s must be a valid IPv4 CIDR block in the form a.b.c.d/p (prefix 0-32), got: %q",
+			"%s must be a valid IPv4 CIDR block in the form a.b.c.d/p (octets 0-255, prefix 0-32, no leading zeros), got: %q",
 			field, value,
 		)
-	}
-
-	if ip.To4() == nil || ipNet.IP.To4() == nil {
-		return fmt.Errorf("%s must be an IPv4 CIDR block, got an IPv6 value: %q", field, value)
 	}
 
 	return nil

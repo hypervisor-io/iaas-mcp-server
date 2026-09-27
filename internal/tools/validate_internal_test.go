@@ -84,6 +84,25 @@ func TestValidateIPv4CIDR(t *testing.T) {
 		"leading-space":             {value: " 10.0.0.0/24", wantError: true},
 		"trailing-space":            {value: "10.0.0.0/24 ", wantError: true},
 		"embedded-newline":          {value: "10.0.0.0/24\n", wantError: true},
+
+		// Shared server-parity table (Master app/Rules/Ipv4Cidr.php and its
+		// tests/Unit/Rules/Ipv4CidrTest.php): the client must accept and
+		// reject EXACTLY what the server's regex does, never merely a
+		// syntactically-valid net.ParseCIDR value.
+		"leading-zero-prefix-08":      {value: "10.0.0.0/08", wantError: true},
+		"leading-zero-prefix-00":      {value: "0.0.0.0/00", wantError: true},
+		"leading-zero-prefix-032":     {value: "10.0.0.0/032", wantError: true},
+		"ipv4-mapped-ipv6-prefix-120": {value: "::ffff:10.0.0.0/120", wantError: true},
+		"ipv4-mapped-ipv6-prefix-24":  {value: "::ffff:10.0.0.0/24", wantError: true},
+		"leading-zero-octet":          {value: "010.0.0.0/24", wantError: true},
+		"host-bits-set":               {value: "10.0.0.1/24", wantError: false},
+		"full-tunnel":                 {value: "0.0.0.0/0", wantError: false},
+		"max-octets-host":             {value: "255.255.255.255/32", wantError: false},
+		"wide-slash-eight":            {value: "10.0.0.0/8", wantError: false},
+		"prefix-128-ipv6-max":         {value: "10.99.0.0/128", wantError: true},
+		"too-few-octets":              {value: "10.99.0/24", wantError: true},
+		"too-many-octets":             {value: "10.99.0.0.1/24", wantError: true},
+		"octet-over-255":              {value: "10.99.0.256/24", wantError: true},
 	}
 
 	for name, tc := range tests {
