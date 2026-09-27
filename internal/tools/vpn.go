@@ -26,7 +26,7 @@ type CreateVpnGatewayInput struct {
 	VpngwPlanID  string `json:"vpngw_plan_id" jsonschema:"UUID of the VPN gateway plan"`
 	VPCSubnetID  string `json:"vpc_subnet_id" jsonschema:"UUID of the VPC subnet"`
 	Name         string `json:"name,omitempty" jsonschema:"optional name"`
-	TunnelSubnet string `json:"tunnel_subnet,omitempty" jsonschema:"optional tunnel subnet CIDR"`
+	TunnelSubnet string `json:"tunnel_subnet,omitempty" jsonschema:"optional strict IPv4 tunnel subnet CIDR (a.b.c.d/p, prefix 0-32)"`
 	ListenPort   *int   `json:"listen_port,omitempty" jsonschema:"optional WireGuard listen port"`
 }
 
@@ -48,15 +48,15 @@ type VpnGatewayResult struct {
 type AddVpnPeerInput struct {
 	GatewayID    string   `json:"gateway_id" jsonschema:"UUID of the VPN gateway"`
 	Type         string   `json:"type" jsonschema:"road_warrior or site_to_site"`
-	Name         string   `json:"name,omitempty" jsonschema:"optional peer name"`
-	PublicKey    string   `json:"public_key,omitempty" jsonschema:"peer public key (site_to_site)"`
-	Endpoint     string   `json:"endpoint,omitempty" jsonschema:"peer endpoint host:port (site_to_site)"`
+	Name         string   `json:"name,omitempty" jsonschema:"optional peer name (no control characters)"`
+	PublicKey    string   `json:"public_key,omitempty" jsonschema:"peer public key (site_to_site; no control characters)"`
+	Endpoint     string   `json:"endpoint,omitempty" jsonschema:"peer endpoint host:port (site_to_site; no control characters)"`
 	TunnelIP     string   `json:"tunnel_ip,omitempty" jsonschema:"peer tunnel IP"`
-	AllowedIPs   []string `json:"allowed_ips,omitempty" jsonschema:"CIDRs routed to this peer"`
-	DNS          string   `json:"dns,omitempty" jsonschema:"DNS for a road_warrior peer"`
+	AllowedIPs   []string `json:"allowed_ips,omitempty" jsonschema:"CIDRs routed to this peer (each element must not contain control characters)"`
+	DNS          string   `json:"dns,omitempty" jsonschema:"DNS for a road_warrior peer (no control characters)"`
 	Keepalive    *int     `json:"keepalive,omitempty" jsonschema:"persistent keepalive seconds"`
 	Enabled      *bool    `json:"enabled,omitempty" jsonschema:"whether the peer is enabled"`
-	PresharedKey string   `json:"preshared_key,omitempty" jsonschema:"optional WireGuard preshared key"`
+	PresharedKey string   `json:"preshared_key,omitempty" jsonschema:"optional WireGuard preshared key (no control characters)"`
 }
 
 type GetVpnPeerInput struct {
@@ -67,12 +67,12 @@ type GetVpnPeerInput struct {
 type UpdateVpnPeerInput struct {
 	GatewayID  string   `json:"gateway_id" jsonschema:"UUID of the VPN gateway"`
 	PeerID     string   `json:"peer_id" jsonschema:"UUID of the peer"`
-	Name       *string  `json:"name,omitempty" jsonschema:"new name"`
-	PublicKey  *string  `json:"public_key,omitempty" jsonschema:"new public key"`
-	Endpoint   *string  `json:"endpoint,omitempty" jsonschema:"new endpoint"`
+	Name       *string  `json:"name,omitempty" jsonschema:"new name (no control characters)"`
+	PublicKey  *string  `json:"public_key,omitempty" jsonschema:"new public key (no control characters)"`
+	Endpoint   *string  `json:"endpoint,omitempty" jsonschema:"new endpoint (no control characters)"`
 	Keepalive  *int     `json:"keepalive,omitempty" jsonschema:"new keepalive seconds"`
 	Enabled    *bool    `json:"enabled,omitempty" jsonschema:"enable or disable"`
-	AllowedIPs []string `json:"allowed_ips,omitempty" jsonschema:"new allowed IPs"`
+	AllowedIPs []string `json:"allowed_ips,omitempty" jsonschema:"new allowed IPs (each element must not contain control characters)"`
 }
 
 type RemoveVpnPeerInput struct {
@@ -114,6 +114,10 @@ type VpnPeeringResult struct {
 // ── gateway handlers ────────────────────────────────────────────────────────
 
 func createVpnGateway(ctx context.Context, cl *client.Client, in CreateVpnGatewayInput) (VpnGatewayResult, error) {
+	if err := validateIPv4CIDR("tunnel_subnet", in.TunnelSubnet); err != nil {
+		return VpnGatewayResult{}, err
+	}
+
 	body := map[string]any{"vpngw_plan_id": in.VpngwPlanID, "vpc_subnet_id": in.VPCSubnetID}
 	if in.Name != "" {
 		body["name"] = in.Name
@@ -163,6 +167,10 @@ func deleteVpnGateway(ctx context.Context, cl *client.Client, in DeleteVpnGatewa
 // ── peer handlers ───────────────────────────────────────────────────────────
 
 func addVpnPeer(ctx context.Context, cl *client.Client, in AddVpnPeerInput) (VpnPeerResult, error) {
+	if err := validateVpnPeerStrings(in.Name, in.Endpoint, in.PresharedKey, in.PublicKey, in.DNS, in.AllowedIPs); err != nil {
+		return VpnPeerResult{}, err
+	}
+
 	body := map[string]any{"type": in.Type}
 	if in.Name != "" {
 		body["name"] = in.Name
@@ -207,6 +215,10 @@ func getVpnPeer(ctx context.Context, cl *client.Client, in GetVpnPeerInput) (Vpn
 }
 
 func updateVpnPeer(ctx context.Context, cl *client.Client, in UpdateVpnPeerInput) (VpnPeerResult, error) {
+	if err := validateVpnPeerUpdateStrings(in.Name, in.PublicKey, in.Endpoint, in.AllowedIPs); err != nil {
+		return VpnPeerResult{}, err
+	}
+
 	body := map[string]any{}
 	if in.Name != nil {
 		body["name"] = *in.Name

@@ -23,7 +23,7 @@ import (
 // as null, when empty).
 type CreateVPCInput struct {
 	Name              string `json:"name" jsonschema:"VPC name: max 16 chars, lowercase letters and digits only (^[a-z0-9]+$)"`
-	Cidr              string `json:"cidr" jsonschema:"RFC1918 CIDR block, e.g. 10.0.0.0/24"`
+	Cidr              string `json:"cidr" jsonschema:"strict IPv4 CIDR block within an RFC1918 private range, e.g. 10.0.0.0/24 (prefix 0-32)"`
 	LocationID        string `json:"location_id,omitempty" jsonschema:"UUID of the VPC-enabled location (hypervisor group)"`
 	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
 	Description       string `json:"description,omitempty" jsonschema:"optional free-text description"`
@@ -71,6 +71,10 @@ type AttachResult struct {
 // createVPC creates the VPC (sync) then reads it back by id so the result
 // carries the full SHOW object (with subnets).
 func createVPC(ctx context.Context, cl *client.Client, in CreateVPCInput) (VPCResult, error) {
+	if err := validateIPv4CIDR("cidr", in.Cidr); err != nil {
+		return VPCResult{}, err
+	}
+
 	body := map[string]any{
 		"name":        in.Name,
 		"cidr":        in.Cidr,
