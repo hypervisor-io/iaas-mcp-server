@@ -79,11 +79,11 @@ func registerAdminHypervisorTools(s *mcp.Server, deps Deps) {
 		})
 
 	// Backup storages.
-	Register(s, deps, Spec{Name: "admin.backup_storage.list", Description: "List backup storages (admin).", Admin: true},
+	Register(s, deps, Spec{Name: "admin.backup_storage.list", Description: "List backup storages including nullable PBS datastore usage bytes and last successful reading time (admin).", Admin: true},
 		func(ctx context.Context, cl *client.Client, _ EmptyInput) (AdminListResult, error) {
 			return adminList(cl.AdminListBackupStorages(ctx))
 		})
-	Register(s, deps, Spec{Name: "admin.backup_storage.get", Description: "Get a backup storage by UUID (admin).", Admin: true},
+	Register(s, deps, Spec{Name: "admin.backup_storage.get", Description: "Get a backup storage by UUID including nullable PBS datastore usage bytes and last successful reading time (admin).", Admin: true},
 		func(ctx context.Context, cl *client.Client, in AdminIDInput) (AdminItemResult, error) {
 			return adminItem(cl.AdminGetBackupStorage(ctx, in.ID))
 		})
