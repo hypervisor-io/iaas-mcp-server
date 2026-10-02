@@ -120,6 +120,8 @@ sample (not exhaustive):
 
 Cross-cutting behavior every tool inherits:
 
+Database operation admission: `user.managed_database.backup` supports full (default) and incremental, with shared atomic admission. It returns a tool error for HTTP 409 `backup_in_progress`, `database_busy`, `restore_not_activated`, `recovery_in_progress` or `pitr_reopen_in_progress`, and for the existing incremental prerequisite refusals. It sends each backup request once; transport/5xx/invalid dispatch acknowledgements can keep a pending backup/task reservation. Inspect backups and tasks before retrying. User backup dispatch failures can answer HTTP 200 with `success: false` and a message; this is also a tool error. Acceptance is not completion. Restart, reset_password, resize and apply_parameter_group likewise return errors for `409 restore_not_activated` until a restore-to-new database successfully activates, including a failed restore.
+
 - **Confirm gate on destructive ops.** Delete/deallocate tools refuse unless the call
   passes `"confirm": true`, so an agent cannot destroy on a slip.
 - **Idempotency keys.** Mutating tools accept an optional `idempotency_key`; where the

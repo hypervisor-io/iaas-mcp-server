@@ -5,7 +5,7 @@ module github.com/hypervisor-io/iaas-mcp-server
 go 1.25.8
 
 require (
-	github.com/hypervisor-io/terraform-provider-iaas v0.4.1-0.20261002001819-68e1c3cab9d4
+	github.com/hypervisor-io/terraform-provider-iaas v0.4.1-0.20261002191026-619a10437cb6
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 )
 
@@ -17,6 +17,3 @@ require (
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 )
-
-// the terraform-provider-iaas client's new GetPlatformVersion method before
-// that commit is pushed. The planner re-pins to a real pseudo-version and

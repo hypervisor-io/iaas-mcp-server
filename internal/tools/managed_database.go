@@ -16,8 +16,8 @@ import (
 // database row, so its get/delete reuse the managed_database tools by the
 // replica's id.
 //
-// promote, backup, and restore have no client methods (managed out-of-band), so
-// they are not exposed.
+// Additional database actions (including backup, restore and parameter-group
+// application) are registered in parity_db.go.
 
 func init() {
 	toolRegistrars = append(toolRegistrars, registerManagedDatabaseTools)
@@ -309,9 +309,9 @@ func registerManagedDatabaseTools(s *mcp.Server, deps Deps) {
 		Description: "Delete a managed database and wait until removed. DESTRUCTIVE: requires \"confirm\": true.",
 		Destructive: true,
 	}, deleteManagedDatabase)
-	Register(s, deps, Spec{Name: "user.managed_database.restart", Description: "Restart a managed database."}, restartManagedDatabase)
-	Register(s, deps, Spec{Name: "user.managed_database.reset_password", Description: "Reset the admin password; returns the new password once."}, resetManagedDatabasePassword)
-	Register(s, deps, Spec{Name: "user.managed_database.resize", Description: "Resize a managed database to a new plan."}, resizeManagedDatabase)
+	Register(s, deps, Spec{Name: "user.managed_database.restart", Description: "Restart a managed database. Refused with 409 restore_not_activated until a restore-to-new database activates, including a failed restore."}, restartManagedDatabase)
+	Register(s, deps, Spec{Name: "user.managed_database.reset_password", Description: "Reset the admin password; returns the new password once. Refused with 409 restore_not_activated until a restore-to-new database activates; no password is returned on refusal."}, resetManagedDatabasePassword)
+	Register(s, deps, Spec{Name: "user.managed_database.resize", Description: "Resize a managed database to a new plan. Refused with 409 restore_not_activated until a restore-to-new database activates; no plan change starts on refusal."}, resizeManagedDatabase)
 	Register(s, deps, Spec{Name: "user.managed_database.upgrade", Description: "Upgrade a managed database to a target engine version."}, upgradeManagedDatabase)
 	Register(s, deps, Spec{Name: "user.managed_database.resync_replicas", Description: "Resync a managed database's replicas."}, resyncManagedDatabaseReplicas)
 	Register(s, deps, Spec{Name: "user.managed_database.retry", Description: "Retry a failed managed database provisioning."}, retryManagedDatabase)

@@ -218,12 +218,12 @@ func testDBBackupPolicyConnection(ctx context.Context, cl *client.Client, in Tes
 }
 
 func registerParityDBTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "user.managed_database.backup", Description: "Take an on-demand backup of a managed database. Optional backup_type: full (default) or incremental."}, backupManagedDatabase)
+	Register(s, deps, Spec{Name: "user.managed_database.backup", Description: "Take an on-demand backup of a managed database. Optional backup_type: full (default) or incremental. Both types refuse with 409 backup_in_progress for a pending/in_progress backup, database_busy for nonterminal work on the actual source VM, restore_not_activated, recovery_in_progress or pitr_reopen_in_progress. Incrementals additionally require a policy and usable full parent, PostgreSQL PITR active, and a primary; never silently falls back to full. Sent once; a transport/5xx/invalid dispatch acknowledgement can leave pending backup/task ownership. Inspect backups and tasks before retrying; acceptance is not completion."}, backupManagedDatabase)
 	Register(s, deps, Spec{Name: "user.managed_database.promote", Description: "Promote a managed database replica to primary."}, promoteManagedDatabase)
 	Register(s, deps, Spec{Name: "user.managed_database.restore", Description: "Restore a managed database from a backup."}, restoreManagedDatabase)
 	Register(s, deps, Spec{Name: "user.managed_database.restore_pitr", Description: "Restore a managed database to a point in time."}, restoreManagedDatabasePitr)
 	Register(s, deps, Spec{Name: "user.managed_database.retry_pitr", Description: "Retry a managed database's PITR configuration."}, retryManagedDatabasePitr)
-	Register(s, deps, Spec{Name: "user.managed_database.apply_parameter_group", Description: "Apply a parameter group to a managed database."}, applyDatabaseParameterGroup)
+	Register(s, deps, Spec{Name: "user.managed_database.apply_parameter_group", Description: "Apply a parameter group to a managed database. Refused with 409 restore_not_activated until a restore-to-new database activates, including a failed restore; no configuration is applied on refusal."}, applyDatabaseParameterGroup)
 
 	Register(s, deps, Spec{Name: "user.instance_backup_policy.update", Description: "Update an instance backup policy (all fields required)."}, updateInstanceBackupPolicy)
 	Register(s, deps, Spec{Name: "user.instance_backup_policy.reset_failures", Description: "Reset an instance backup policy's failure counters."}, resetInstanceBackupPolicyFailures)
