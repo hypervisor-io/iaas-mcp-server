@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -72,8 +73,19 @@ type TestDBBackupPolicyConnectionInput struct {
 	S3PathPrefix string `json:"s3_path_prefix,omitempty" jsonschema:"optional path prefix"`
 }
 
-func backupManagedDatabase(ctx context.Context, cl *client.Client, in ManagedDatabaseIDInput) (ObjectResult, error) {
-	return objectResult(cl.BackupManagedDatabase(ctx, in.ID))
+// DBBackupInput is the input of user.managed_database.backup.
+type DBBackupInput struct {
+	ID         string `json:"id" jsonschema:"UUID of the managed database"`
+	BackupType string `json:"backup_type,omitempty" jsonschema:"optional: full (default) or incremental. An incremental is only taken when the database can take one (a backup policy attached, a completed full backup to build on, PostgreSQL with point-in-time recovery active, not a replica); otherwise the API refuses with a reason and nothing is started"`
+}
+
+func backupManagedDatabase(ctx context.Context, cl *client.Client, in DBBackupInput) (ObjectResult, error) {
+	switch in.BackupType {
+	case "", "full", "incremental":
+	default:
+		return ObjectResult{}, fmt.Errorf("backup_type must be full or incremental")
+	}
+	return objectResult(cl.BackupManagedDatabaseOfType(ctx, in.ID, in.BackupType))
 }
 
 func promoteManagedDatabase(ctx context.Context, cl *client.Client, in ManagedDatabaseIDInput) (OKResult, error) {
@@ -206,7 +218,7 @@ func testDBBackupPolicyConnection(ctx context.Context, cl *client.Client, in Tes
 }
 
 func registerParityDBTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "user.managed_database.backup", Description: "Take an on-demand backup of a managed database."}, backupManagedDatabase)
+	Register(s, deps, Spec{Name: "user.managed_database.backup", Description: "Take an on-demand backup of a managed database. Optional backup_type: full (default) or incremental."}, backupManagedDatabase)
 	Register(s, deps, Spec{Name: "user.managed_database.promote", Description: "Promote a managed database replica to primary."}, promoteManagedDatabase)
 	Register(s, deps, Spec{Name: "user.managed_database.restore", Description: "Restore a managed database from a backup."}, restoreManagedDatabase)
 	Register(s, deps, Spec{Name: "user.managed_database.restore_pitr", Description: "Restore a managed database to a point in time."}, restoreManagedDatabasePitr)
