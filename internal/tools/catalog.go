@@ -74,7 +74,7 @@ func registerCatalogTools(s *mcp.Server, deps Deps) {
 		func(ctx context.Context, cl *client.Client, in PlanGroupsInput) (CatalogListResult, error) {
 			return catalogResult(cl.ListPlanGroups(ctx, in.LocationID))
 		})
-	Register(s, deps, Spec{Name: "user.catalog.plans", Description: "List instance plans in a location's plan group."},
+	Register(s, deps, Spec{Name: "user.catalog.plans", Description: "List instance plans in a location's plan group. A plan with a GPU carries a gpu object (count, vendor, vram_min_gb, mode, profile, label, available: whether a server in this location can currently take it); gpu is null for a plan without a GPU."},
 		func(ctx context.Context, cl *client.Client, in PlansInput) (CatalogListResult, error) {
 			return catalogResult(cl.ListPlans(ctx, in.LocationID, in.PlanGroupID))
 		})
@@ -96,11 +96,11 @@ func registerCatalogTools(s *mcp.Server, deps Deps) {
 		func(ctx context.Context, cl *client.Client, in QueryInput) (CatalogListResult, error) {
 			return catalogResult(cl.SearchK8sRegions(ctx, in.Query))
 		})
-	Register(s, deps, Spec{Name: "user.catalog.k8s_worker_plans", Description: "Search Kubernetes worker node plans."},
+	Register(s, deps, Spec{Name: "user.catalog.k8s_worker_plans", Description: "Search Kubernetes worker node plans. A plan with a GPU carries a gpu object (count, vendor, vram_min_gb, mode, profile, label); gpu is null otherwise."},
 		func(ctx context.Context, cl *client.Client, in QueryInput) (CatalogListResult, error) {
 			return catalogResult(cl.SearchK8sWorkerPlans(ctx, in.Query))
 		})
-	Register(s, deps, Spec{Name: "user.catalog.k8s_control_plane_plans", Description: "Search Kubernetes control-plane node plans."},
+	Register(s, deps, Spec{Name: "user.catalog.k8s_control_plane_plans", Description: "Search Kubernetes control-plane node plans. A plan with a GPU carries a gpu object (count, vendor, vram_min_gb, mode, profile, label); gpu is null otherwise."},
 		func(ctx context.Context, cl *client.Client, in QueryInput) (CatalogListResult, error) {
 			return catalogResult(cl.SearchK8sControlPlanePlans(ctx, in.Query))
 		})
