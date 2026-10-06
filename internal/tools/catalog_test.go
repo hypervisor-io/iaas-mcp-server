@@ -24,7 +24,7 @@ func catalogMock() http.Handler {
 	mux.HandleFunc("GET /isos", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"current_page": 1, "last_page": 1,
-			"data": []any{map[string]any{"id": "iso-1", "name": "ubuntu.iso"}},
+			"data": []any{map[string]any{"id": "iso-1", "name": "ubuntu.iso", "hypervisors": []any{"node-a", "node-b"}}},
 		})
 	})
 	// Kubernetes catalog search endpoints return Select2 {results:[...]}.
@@ -68,6 +68,10 @@ func TestCatalog_Lookups(t *testing.T) {
 		t.Errorf("isos count = %d, want 1", isos.Count)
 	}
 
+	if nodes, ok := isos.Items[0]["hypervisors"].([]any); !ok || len(nodes) != 2 || nodes[0] != "node-a" {
+		t.Fatalf("ISO presence array was lost: %v", isos.Items)
+	}
+
 	res = callTool(t, cs, "user.catalog.k8s_versions", map[string]any{"query": "1.30"})
 	var vers tools.CatalogListResult
 	unmarshalResult(t, res, &vers)
@@ -80,5 +84,33 @@ func TestCatalog_Lookups(t *testing.T) {
 	unmarshalResult(t, res, &subs)
 	if subs.Count != 1 {
 		t.Errorf("k8s_subnets count = %d, want 1", subs.Count)
+	}
+}
+
+func TestISOPresenceArrays(t *testing.T) {
+	for _, name := range []string{"user.catalog.isos", "admin.iso.list"} {
+		for _, nodes := range [][]any{{}, {"node-a", "node-b"}} {
+			t.Run(name+string(rune('0'+len(nodes))), func(t *testing.T) {
+				mux := http.NewServeMux()
+				path := "GET /isos"
+				if name == "admin.iso.list" {
+					path = "GET /v1/isos"
+				}
+				mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+					writeJSON(w, http.StatusOK, map[string]any{"data": []any{map[string]any{"id": "iso-1", "hypervisors": nodes}}, "current_page": 1, "last_page": 1})
+				})
+				cs := connectSession(t, mux)
+				result := callTool(t, cs, name, map[string]any{})
+				var got tools.CatalogListResult
+				unmarshalResult(t, result, &got)
+				if len(got.Items) != 1 {
+					t.Fatalf("missing ISO: %v", got)
+				}
+				actual, ok := got.Items[0]["hypervisors"].([]any)
+				if !ok || len(actual) != len(nodes) {
+					t.Fatalf("presence must remain a JSON array: %v", got.Items)
+				}
+			})
+		}
 	}
 }

@@ -3995,11 +3995,13 @@
       "surface": "admin",
       "opentofu": {
         "status": "excluded",
-        "reason": "admin api/v1 surface; the OpenTofu provider is user-scoped IaC and does not model admin endpoints"
+        "reason": "admin api/v1 surface; the OpenTofu provider is user-scoped IaC and does not model admin endpoints",
+        "notes": "ISO hypervisors is an observed node UUID array (never a JSON string); this surface remains excluded."
       },
       "mcp": {
         "status": "excluded",
-        "reason": "admin read not in the v1 curated admin allowlist; candidate for a later phase"
+        "reason": "admin read not in the v1 curated admin allowlist; candidate for a later phase",
+        "notes": "ISO hypervisors is an observed node UUID array (never a JSON string); this surface remains excluded."
       }
     },
     {
@@ -4023,11 +4025,13 @@
       "surface": "admin",
       "opentofu": {
         "status": "excluded",
-        "reason": "admin api/v1 surface; the OpenTofu provider is user-scoped IaC and does not model admin endpoints"
+        "reason": "admin api/v1 surface; the OpenTofu provider is user-scoped IaC and does not model admin endpoints",
+        "notes": "ISO hypervisors is an observed node UUID array (never a JSON string); this surface remains excluded."
       },
       "mcp": {
         "status": "covered",
-        "tool": "admin.iso.list"
+        "tool": "admin.iso.list",
+        "notes": "ISO hypervisors is an observed node UUID array (never a JSON string); raw-map tools preserve the array."
       }
     },
     {
@@ -9421,11 +9425,13 @@
       "surface": "user",
       "opentofu": {
         "status": "excluded",
-        "reason": "UI form-data / browse helper, not a management action"
+        "reason": "UI form-data / browse helper, not a management action",
+        "notes": "ISO hypervisors is an observed node UUID array (never a JSON string); this surface remains excluded."
       },
       "mcp": {
         "status": "excluded",
-        "reason": "UI form-data / browse helper, not a management action"
+        "reason": "UI form-data / browse helper, not a management action",
+        "notes": "ISO hypervisors is an observed node UUID array (never a JSON string); this surface remains excluded."
       }
     },
     {
@@ -10444,11 +10450,13 @@
       "surface": "user",
       "opentofu": {
         "status": "covered",
-        "type": "iaas_iso"
+        "type": "iaas_iso",
+        "notes": "hypervisors is now a JSON array of observed node UUIDs. iaas_iso deliberately exposes only id/name/filename; node presence is excluded from declarative state."
       },
       "mcp": {
         "status": "covered",
-        "tool": "user.catalog.isos"
+        "tool": "user.catalog.isos",
+        "notes": "ISO hypervisors is an observed node UUID array (never a JSON string); raw-map tools preserve the array."
       }
     },
     {
