@@ -37,9 +37,9 @@ type CreateKubernetesClusterInput struct {
 	KubernetesVersionID  string `json:"kubernetes_version_id" jsonschema:"UUID of the Kubernetes version"`
 	ControlNodeCount     int    `json:"control_node_count" jsonschema:"number of control-plane nodes (1 or 3)"`
 	EndpointMode         string `json:"endpoint_mode" jsonschema:"private or public_and_private"`
-	CPInstancePlanID     string `json:"cp_instance_plan_id" jsonschema:"UUID of the control-plane node plan"`
+	CPInstancePlanID     string `json:"cp_instance_plan_id" jsonschema:"UUID of the control-plane node plan; a plan with a GPU is refused with 422 gpu_plan_not_supported_for_kubernetes"`
 	CPLBPlanID           string `json:"cp_lb_plan_id" jsonschema:"UUID of the control-plane load balancer plan"`
-	WorkerInstancePlanID string `json:"worker_instance_plan_id" jsonschema:"UUID of the worker node plan"`
+	WorkerInstancePlanID string `json:"worker_instance_plan_id" jsonschema:"UUID of the worker node plan; a plan with a GPU is refused with 422 gpu_plan_not_supported_for_kubernetes"`
 	Description          string `json:"description,omitempty" jsonschema:"optional description"`
 	ProjectID            string `json:"project_id,omitempty" jsonschema:"optional project UUID"`
 	PodCIDR              string `json:"pod_cidr,omitempty" jsonschema:"optional pod CIDR"`
@@ -99,7 +99,7 @@ type K8sUpgradeResult struct {
 type CreateK8sNodePoolInput struct {
 	ClusterID          string           `json:"cluster_id" jsonschema:"UUID of the cluster"`
 	Name               string           `json:"name" jsonschema:"node pool name"`
-	InstancePlanID     string           `json:"instance_plan_id" jsonschema:"UUID of the node instance plan"`
+	InstancePlanID     string           `json:"instance_plan_id" jsonschema:"UUID of the node instance plan; a plan with a GPU is refused with 422 gpu_plan_not_supported_for_kubernetes"`
 	MinSize            int              `json:"min_size" jsonschema:"minimum node count"`
 	MaxSize            int              `json:"max_size" jsonschema:"maximum node count"`
 	TargetCount        int              `json:"target_count" jsonschema:"target node count"`
@@ -122,7 +122,7 @@ type ListK8sNodePoolsInput struct {
 type UpdateK8sNodePoolInput struct {
 	ClusterID          string           `json:"cluster_id" jsonschema:"UUID of the cluster"`
 	PoolID             string           `json:"pool_id" jsonschema:"UUID of the node pool"`
-	InstancePlanID     *string          `json:"instance_plan_id,omitempty" jsonschema:"UUID of the new node instance plan; persisting a change with live workers marks them stale — follow with user.kubernetes_node_pool.rotate to replace them"`
+	InstancePlanID     *string          `json:"instance_plan_id,omitempty" jsonschema:"UUID of the new node instance plan (a plan with a GPU is refused with 422 gpu_plan_not_supported_for_kubernetes); persisting a change with live workers marks them stale — follow with user.kubernetes_node_pool.rotate to replace them"`
 	MinSize            *int             `json:"min_size,omitempty"`
 	MaxSize            *int             `json:"max_size,omitempty"`
 	TargetCount        *int             `json:"target_count,omitempty"`

@@ -96,11 +96,11 @@ func registerCatalogTools(s *mcp.Server, deps Deps) {
 		func(ctx context.Context, cl *client.Client, in QueryInput) (CatalogListResult, error) {
 			return catalogResult(cl.SearchK8sRegions(ctx, in.Query))
 		})
-	Register(s, deps, Spec{Name: "user.catalog.k8s_worker_plans", Description: "Search Kubernetes worker node plans. A plan with a GPU carries a gpu object (count, vendor, vram_min_gb, mode, profile, label); gpu is null otherwise."},
+	Register(s, deps, Spec{Name: "user.catalog.k8s_worker_plans", Description: "Search Kubernetes worker node plans. Plans with a GPU are never returned (Kubernetes does not support GPU plans); every item carries gpu: null."},
 		func(ctx context.Context, cl *client.Client, in QueryInput) (CatalogListResult, error) {
 			return catalogResult(cl.SearchK8sWorkerPlans(ctx, in.Query))
 		})
-	Register(s, deps, Spec{Name: "user.catalog.k8s_control_plane_plans", Description: "Search Kubernetes control-plane node plans. A plan with a GPU carries a gpu object (count, vendor, vram_min_gb, mode, profile, label); gpu is null otherwise."},
+	Register(s, deps, Spec{Name: "user.catalog.k8s_control_plane_plans", Description: "Search Kubernetes control-plane node plans. Plans with a GPU are never returned (Kubernetes does not support GPU plans); every item carries gpu: null."},
 		func(ctx context.Context, cl *client.Client, in QueryInput) (CatalogListResult, error) {
 			return catalogResult(cl.SearchK8sControlPlanePlans(ctx, in.Query))
 		})

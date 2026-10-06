@@ -25,7 +25,7 @@ func gpuPlanMock() http.Handler {
 	})
 	mux.HandleFunc("GET /kubernetes/search/plans", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"results": []any{
-			map[string]any{"id": "ip-g", "name": "gpu-1", "gpu": gpuNoLocation},
+			// Kubernetes does not support GPU plans: Master never lists one here.
 			map[string]any{"id": "ip-p", "name": "std-2", "gpu": nil},
 		}})
 	})
@@ -72,15 +72,8 @@ func TestGPUPlan_PassesThroughOnPlanTools(t *testing.T) {
 
 	var k8s tools.CatalogListResult
 	unmarshalResult(t, callTool(t, cs, "user.catalog.k8s_worker_plans", map[string]any{}), &k8s)
-	kg := gpuOf(t, k8s.Items[0])
-	if kg["count"] != float64(1) {
-		t.Errorf("k8s worker plan gpu = %v", kg)
-	}
-	if _, has := kg["available"]; has {
-		t.Errorf("no location in scope: available must be absent, got %v", kg)
-	}
-	if gpuOf(t, k8s.Items[1]) != nil {
-		t.Errorf("non-GPU k8s plan must keep gpu null")
+	if len(k8s.Items) != 1 || gpuOf(t, k8s.Items[0]) != nil {
+		t.Errorf("k8s worker plans carry gpu null (no GPU plan is listed), got %v", k8s.Items)
 	}
 
 	var list tools.AdminListResult
