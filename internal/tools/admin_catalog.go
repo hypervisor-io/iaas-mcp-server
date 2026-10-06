@@ -18,11 +18,11 @@ func init() {
 }
 
 func registerAdminCatalogTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "admin.instance_plan.list", Description: "List instance plans (admin).", Admin: true},
+	Register(s, deps, Spec{Name: "admin.instance_plan.list", Description: "List instance plans (admin). A plan with a GPU carries a gpu object (count, vendor, vram_min_gb, mode, profile, label); gpu is null otherwise.", Admin: true},
 		func(ctx context.Context, cl *client.Client, _ EmptyInput) (AdminListResult, error) {
 			return adminList(cl.AdminListInstancePlans(ctx))
 		})
-	Register(s, deps, Spec{Name: "admin.instance_plan.get", Description: "Get an instance plan by UUID (admin).", Admin: true},
+	Register(s, deps, Spec{Name: "admin.instance_plan.get", Description: "Get an instance plan by UUID (admin). A plan with a GPU carries a gpu object (count, vendor, vram_min_gb, mode, profile, label); gpu is null otherwise.", Admin: true},
 		func(ctx context.Context, cl *client.Client, in AdminIDInput) (AdminItemResult, error) {
 			return adminItem(cl.AdminGetInstancePlan(ctx, in.ID))
 		})
