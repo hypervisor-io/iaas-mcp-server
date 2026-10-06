@@ -82,7 +82,7 @@ func registerCatalogTools(s *mcp.Server, deps Deps) {
 		func(ctx context.Context, cl *client.Client, in ImagesInput) (CatalogListResult, error) {
 			return catalogResult(cl.SearchImages(ctx, in.Query, resolveLocationID(in.LocationID, in.HypervisorGroupID)))
 		})
-	Register(s, deps, Spec{Name: "user.catalog.isos", Description: "List available ISOs."},
+	Register(s, deps, Spec{Name: "user.catalog.isos", Description: "List available ISOs. hypervisors is an array of nodes reporting a complete local file; observed presence is not a readiness guarantee."},
 		func(ctx context.Context, cl *client.Client, in QueryInput) (CatalogListResult, error) {
 			return catalogResult(cl.ListISOs(ctx, in.Query))
 		})

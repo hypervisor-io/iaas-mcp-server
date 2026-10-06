@@ -26,7 +26,7 @@ func registerAdminCatalogTools(s *mcp.Server, deps Deps) {
 		func(ctx context.Context, cl *client.Client, in AdminIDInput) (AdminItemResult, error) {
 			return adminItem(cl.AdminGetInstancePlan(ctx, in.ID))
 		})
-	Register(s, deps, Spec{Name: "admin.iso.list", Description: "List ISOs (admin).", Admin: true},
+	Register(s, deps, Spec{Name: "admin.iso.list", Description: "List ISOs (admin). hypervisors is an array of nodes reporting a complete local file; observed presence is not a readiness guarantee.", Admin: true},
 		func(ctx context.Context, cl *client.Client, _ EmptyInput) (AdminListResult, error) {
 			return adminList(cl.AdminListISOs(ctx))
 		})
