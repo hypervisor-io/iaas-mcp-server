@@ -3,18 +3,46 @@ package tools
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hypervisor-io/terraform-provider-iaas/client"
+	"github.com/hypervisor-io/terraform-provider-iaas/volumeop"
 	"github.com/hypervisor-io/terraform-provider-iaas/waiter"
 )
 
 // Volume tools, mirroring the iaas_volume and iaas_volume_snapshot resources.
-// Volume create is async (poll status to "available"). Attach/detach/resize are
-// synchronous. Snapshots have no SHOW route or id-returning create: create
-// enqueues, then the id is resolved by (unique) name, then readiness is polled;
-// delete converges by polling to 404.
+// Volume create is async (poll status to "available").
+//
+// Attach, detach, resize and delete are CONFIRMED asynchronous operations on
+// the platform: the API records the operation (the volume's active_operation
+// names it) and the attachment, plan and size (or the volume itself) change
+// only when the node confirms. These tools WAIT, with a bounded timeout, for
+// that confirmed outcome through the provider's volumeop package, so the MCP
+// server and the OpenTofu provider share one definition of done/failed/refused:
+//   - confirmed: the tool returns the final volume object;
+//   - node failure: a tool error saying the operation failed on the node and
+//     the volume kept its previous state;
+//   - refusal: a tool error carrying the API's reason code;
+//   - timeout: a tool error saying the operation is still pending (it is NOT
+//     cancelled); user.volume.get is the status tool, its active_operation
+//     field names a still-pending operation and is null once it ended.
+// A short per-volume cooldown between operations is waited out inside the
+// same timeout.
+//
+// Snapshots have no SHOW route or id-returning create: create enqueues, then
+// the id is resolved by (unique) name, then readiness is polled; delete
+// converges by polling to 404.
+
+// volumeOpTimeout bounds one confirmed volume mutation tool call, including
+// any wait for another in-flight operation and the per-volume cooldown. A var
+// only so the package test can shrink it.
+var volumeOpTimeout = 30 * time.Minute
+
+func volumeOpOptions() volumeop.Options {
+	return volumeop.Options{Interval: pollInterval(), Timeout: volumeOpTimeout}
+}
 
 func init() {
 	toolRegistrars = append(toolRegistrars, registerVolumeTools)
@@ -135,7 +163,7 @@ func listVolumes(ctx context.Context, cl *client.Client, _ ListVolumesInput) (Vo
 }
 
 func attachVolume(ctx context.Context, cl *client.Client, in AttachVolumeInput) (VolumeResult, error) {
-	obj, err := cl.AttachVolume(ctx, in.ID, map[string]any{"instance_id": in.InstanceID})
+	obj, err := volumeop.AttachVolume(ctx, cl, in.ID, in.InstanceID, volumeOpOptions())
 	if err != nil {
 		return VolumeResult{}, err
 	}
@@ -143,7 +171,7 @@ func attachVolume(ctx context.Context, cl *client.Client, in AttachVolumeInput) 
 }
 
 func detachVolume(ctx context.Context, cl *client.Client, in DetachVolumeInput) (VolumeResult, error) {
-	obj, err := cl.DetachVolume(ctx, in.ID)
+	obj, err := volumeop.DetachVolume(ctx, cl, in.ID, volumeOpOptions())
 	if err != nil {
 		return VolumeResult{}, err
 	}
@@ -151,19 +179,18 @@ func detachVolume(ctx context.Context, cl *client.Client, in DetachVolumeInput) 
 }
 
 func resizeVolume(ctx context.Context, cl *client.Client, in ResizeVolumeInput) (VolumeResult, error) {
-	// Resize returns the bare envelope {success,is_downgrade,volume}.
-	env, err := cl.ResizeVolume(ctx, in.ID, map[string]any{"volume_plan_id": in.VolumePlanID})
+	obj, err := volumeop.ResizeVolume(ctx, cl, in.ID, in.VolumePlanID, volumeOpOptions())
 	if err != nil {
 		return VolumeResult{}, err
 	}
-	if vol, ok := env["volume"].(map[string]any); ok {
-		return VolumeResult{Volume: vol}, nil
-	}
-	return VolumeResult{Volume: env}, nil
+	return VolumeResult{Volume: obj}, nil
 }
 
+// deleteVolume does NOT detach first: an attached volume is refused by the API
+// with reason volume_attached, which the tool error carries; call
+// user.volume.detach first.
 func deleteVolume(ctx context.Context, cl *client.Client, in DeleteVolumeInput) (DeleteResult, error) {
-	if err := cl.DeleteVolume(ctx, in.ID); err != nil {
+	if err := volumeop.DeleteVolume(ctx, cl, in.ID, volumeOpOptions()); err != nil {
 		return DeleteResult{}, err
 	}
 	return DeleteResult{ID: in.ID, Deleted: true}, nil
@@ -237,19 +264,42 @@ func deleteVolumeSnapshot(ctx context.Context, cl *client.Client, in DeleteVolum
 	return DeleteResult{ID: in.SnapshotID, Deleted: true}, nil
 }
 
+// volumeOpNote is appended to every confirmed volume mutation tool.
+const volumeOpNote = " A node failure (the volume keeps its previous state) or a refusal (with " +
+	"its reason code) is returned as an error. The wait is bounded (30 minutes, including the " +
+	"platform's short per-volume cooldown); on timeout the operation is NOT cancelled, " +
+	"follow it with user.volume.get."
+
 func registerVolumeTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{
 		Name:        "user.volume.create",
 		Description: "Create a block volume and wait until it is available." + locationIDAliasNote,
 	}, createVolume)
 	Register(s, deps, Spec{Name: "user.volume.list", Description: "List all volumes owned by the caller."}, listVolumes)
-	Register(s, deps, Spec{Name: "user.volume.get", Description: "Get a volume by UUID."}, getVolume)
-	Register(s, deps, Spec{Name: "user.volume.attach", Description: "Attach a volume to an instance."}, attachVolume)
-	Register(s, deps, Spec{Name: "user.volume.detach", Description: "Detach a volume from its instance."}, detachVolume)
-	Register(s, deps, Spec{Name: "user.volume.resize", Description: "Resize a volume to a new volume plan."}, resizeVolume)
 	Register(s, deps, Spec{
-		Name:        "user.volume.delete",
-		Description: "Delete a volume. DESTRUCTIVE: requires \"confirm\": true.",
+		Name: "user.volume.get",
+		Description: "Get a volume by UUID. Its active_operation field names a still-pending " +
+			"attach, detach, resize or delete (null once the operation ended).",
+	}, getVolume)
+	Register(s, deps, Spec{
+		Name: "user.volume.attach",
+		Description: "Attach a volume to an instance and wait until the node confirmed the " +
+			"attachment." + volumeOpNote,
+	}, attachVolume)
+	Register(s, deps, Spec{
+		Name:        "user.volume.detach",
+		Description: "Detach a volume from its instance and wait until the node confirmed it." + volumeOpNote,
+	}, detachVolume)
+	Register(s, deps, Spec{
+		Name: "user.volume.resize",
+		Description: "Resize a volume to a larger volume plan and wait until the node confirmed " +
+			"the new capacity (size and plan change only then)." + volumeOpNote,
+	}, resizeVolume)
+	Register(s, deps, Spec{
+		Name: "user.volume.delete",
+		Description: "Delete a volume and wait until the node confirmed the deletion. An attached " +
+			"volume is refused (reason volume_attached): detach it first." + volumeOpNote +
+			" DESTRUCTIVE: requires \"confirm\": true.",
 		Destructive: true,
 	}, deleteVolume)
 
