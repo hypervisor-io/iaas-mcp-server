@@ -111,7 +111,7 @@ type VolumeListResult struct {
 
 type CreateVolumeSnapshotInput struct {
 	VolumeID string `json:"volume_id" jsonschema:"UUID of the source volume"`
-	Name     string `json:"name" jsonschema:"snapshot name (must be unique per volume)"`
+	Name     string `json:"name" jsonschema:"snapshot name (unique per volume, nonempty, no leading or trailing whitespace, must not be 0)"`
 }
 
 type GetVolumeSnapshotInput struct {
@@ -359,7 +359,8 @@ func registerVolumeTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{
 		Name: "user.volume.snapshot_create",
 		Description: "Create a snapshot of a volume and wait until it is available. The name must be unique on the " +
-			"volume: a name already used there is refused (the new snapshot is found by its name)." +
+			"volume: a name already used there is refused (the new snapshot is found by its name). " +
+			"Names must be nonempty, have no leading or trailing whitespace, and must not be the literal \"0\"." +
 			volumeAdmitNote,
 	}, createVolumeSnapshot)
 	Register(s, deps, Spec{
