@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hypervisor-io/terraform-provider-iaas/client"
 )
@@ -24,6 +25,7 @@ func TestMapError_ByStatus(t *testing.T) {
 		{"403", &client.APIError{Status: 403, Message: "nope"}, "access denied:"},
 		{"422", &client.APIError{Status: 422, Message: "bad"}, "validation failed:"},
 		{"429", &client.APIError{Status: 429, Message: "slow down"}, "rate limited (retryable):"},
+		{"429 with Retry-After", &client.APIError{Status: 429, Reason: "volume_cooldown", Message: "Volume is in cooldown.", RetryAfter: 42 * time.Second}, "rate limited (retryable, retry after 42s):"},
 		{"500 passthrough", &client.APIError{Status: 500, Message: "boom"}, ""},
 		{"non-api passthrough", errors.New("dial tcp: refused"), ""},
 	}

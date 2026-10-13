@@ -5,7 +5,7 @@ module github.com/hypervisor-io/iaas-mcp-server
 go 1.25.8
 
 require (
-	github.com/hypervisor-io/terraform-provider-iaas v0.4.1-0.20261012184311-95b43ef312a8
+	github.com/hypervisor-io/terraform-provider-iaas v0.4.1-0.20261013070839-5306ee7a577e
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 )
 

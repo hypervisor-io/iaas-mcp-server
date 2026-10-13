@@ -44,6 +44,21 @@ func volumeOpOptions() volumeop.Options {
 	return volumeop.Options{Interval: pollInterval(), Timeout: volumeOpTimeout}
 }
 
+// volumeAdmitTimeout bounds the admission wait of a snapshot or backup
+// create (busy, the per-volume cooldown of at most 300 seconds, the account
+// in-flight limit). A var only so the package test can shrink it.
+var volumeAdmitTimeout = 10 * time.Minute
+
+func volumeAdmitOptions() volumeop.Options {
+	return volumeop.Options{Interval: pollInterval(), Timeout: volumeAdmitTimeout}
+}
+
+// volumeAdmitNote is appended to the snapshot and backup create tools.
+const volumeAdmitNote = " While another operation runs on the volume, during the platform's short " +
+	"per-volume cooldown (the API names the seconds left) or while the account is at its " +
+	"in-flight limit, the tool waits (bounded, 10 minutes) and asks again; any other refusal " +
+	"is returned with its reason code. A request that got no definite answer is never repeated."
+
 func init() {
 	toolRegistrars = append(toolRegistrars, registerVolumeTools)
 }
@@ -199,33 +214,71 @@ func deleteVolume(ctx context.Context, cl *client.Client, in DeleteVolumeInput) 
 // ── snapshot handlers ───────────────────────────────────────────────────────
 
 func createVolumeSnapshot(ctx context.Context, cl *client.Client, in CreateVolumeSnapshotInput) (SnapshotResult, error) {
-	if _, err := cl.CreateVolumeSnapshot(ctx, in.VolumeID, map[string]any{"name": in.Name}); err != nil {
+	// The platform does not enforce unique snapshot names per volume and the
+	// new snapshot is found by its name: refuse a name already in use, so the
+	// tool can never return (or lead to the deletion of) a snapshot it did
+	// not create.
+	before, err := volumeop.CheckSnapshotNameFree(ctx, cl, in.VolumeID, in.Name)
+	if err != nil {
 		return SnapshotResult{}, err
 	}
 
-	// The create response returns only the backup queue, not the snapshot id;
-	// resolve the id by (unique) name, tolerating not-found while it appears.
+	// ONE attempt per send; only the gate's transient, definite refusals are
+	// waited out and sent again (volumeop.Admit).
+	// Before every repeated send the pre-send set is refreshed, so a same-name
+	// snapshot someone else made during an admission wait is never taken for
+	// ours (volumeop.SnapshotIDsBeforeSend).
+	attempt := 0
+	err = volumeop.Admit(ctx, in.VolumeID, volumeop.Snapshot, volumeAdmitOptions(), func(ctx context.Context) error {
+		if attempt > 0 {
+			before = volumeop.SnapshotIDsBeforeSend(ctx, cl, in.VolumeID, in.Name, before)
+		}
+		attempt++
+		_, err := cl.CreateVolumeSnapshot(ctx, in.VolumeID, map[string]any{"name": in.Name})
+		return err
+	})
+
 	var snapshotID string
-	err := waiter.WaitFor(ctx, waiter.Options{
-		Interval: pollInterval(),
-		Timeout:  defaultCreateTimeout,
-		Refresh: func() (string, bool, error) {
-			obj, err := cl.FindVolumeSnapshotByName(ctx, in.VolumeID, in.Name)
-			if err != nil {
-				if client.IsNotFound(err) {
+	if err != nil {
+		if !volumeop.IsUncertain(err) {
+			return SnapshotResult{}, err
+		}
+		// No definite answer: the snapshot row is written in the create
+		// request itself, so a read-back decides. Only a snapshot of this
+		// name that did not exist before the send is adopted; it is never
+		// sent again. %v, not %w: MapError must not reduce this to the bare
+		// HTTP status.
+		id, aerr := volumeop.AdoptAfterUncertain(ctx, cl, in.VolumeID, in.Name, before)
+		if aerr != nil {
+			return SnapshotResult{}, fmt.Errorf("snapshot create for %q on volume %s got no definite answer (%v) and was not repeated: %v",
+				in.Name, in.VolumeID, err, aerr)
+		}
+		snapshotID = id
+	}
+
+	// The create response returns only the backup queue, not the snapshot id;
+	// resolve it as the single snapshot of that name that was not there before
+	// the send, tolerating a brief lag. Several new same-name snapshots are an
+	// error, never a guess.
+	if snapshotID == "" {
+		err = waiter.WaitFor(ctx, waiter.Options{
+			Interval: pollInterval(),
+			Timeout:  defaultCreateTimeout,
+			Refresh: func() (string, bool, error) {
+				id, found, err := volumeop.NewSnapshotID(ctx, cl, in.VolumeID, in.Name, before)
+				if err != nil {
+					return "", false, err
+				}
+				if !found {
 					return "resolving", false, nil
 				}
-				return "", false, err
-			}
-			if id, _ := obj["id"].(string); id != "" {
 				snapshotID = id
 				return "resolved", true, nil
-			}
-			return "resolving", false, nil
-		},
-	})
-	if err != nil {
-		return SnapshotResult{}, fmt.Errorf("snapshot %q did not appear: %w", in.Name, err)
+			},
+		})
+		if err != nil {
+			return SnapshotResult{}, fmt.Errorf("snapshot %q did not appear: %w", in.Name, err)
+		}
 	}
 
 	// Now poll readiness.
@@ -304,8 +357,10 @@ func registerVolumeTools(s *mcp.Server, deps Deps) {
 	}, deleteVolume)
 
 	Register(s, deps, Spec{
-		Name:        "user.volume.snapshot_create",
-		Description: "Create a snapshot of a volume (name must be unique per volume) and wait until it is available.",
+		Name: "user.volume.snapshot_create",
+		Description: "Create a snapshot of a volume and wait until it is available. The name must be unique on the " +
+			"volume: a name already used there is refused (the new snapshot is found by its name)." +
+			volumeAdmitNote,
 	}, createVolumeSnapshot)
 	Register(s, deps, Spec{
 		Name:        "user.volume.snapshot_get",

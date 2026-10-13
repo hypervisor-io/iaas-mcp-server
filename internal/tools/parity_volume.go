@@ -2,10 +2,12 @@ package tools
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hypervisor-io/terraform-provider-iaas/client"
+	"github.com/hypervisor-io/terraform-provider-iaas/volumeop"
 )
 
 // Volume backup and snapshot-restore tools. These enqueue work and return a
@@ -56,12 +58,31 @@ func restoreBody(in VolumeRestoreInput) map[string]any {
 	return body
 }
 
+// createVolumeBackup sends the backup create in ONE attempt (a replay would
+// start a second backup) and waits out only the gate's transient, definite
+// refusals (busy, cooldown, account in-flight limit) through volumeop.Admit.
+// An uncertain answer (5xx, transport) is reported, never repeated; its text
+// is formatted with %v (not wrapped) so MapError cannot reduce the tool error
+// to the bare HTTP status.
 func createVolumeBackup(ctx context.Context, cl *client.Client, in VolumeBackupCreateInput) (ObjectResult, error) {
 	body := map[string]any{}
 	if in.Name != "" {
 		body["name"] = in.Name
 	}
-	return objectResult(cl.CreateVolumeBackup(ctx, in.VolumeID, body))
+	var obj map[string]any
+	err := volumeop.Admit(ctx, in.VolumeID, volumeop.Backup, volumeAdmitOptions(), func(ctx context.Context) error {
+		var err error
+		obj, err = cl.CreateVolumeBackup(ctx, in.VolumeID, body)
+		return err
+	})
+	if err != nil {
+		if volumeop.IsUncertain(err) {
+			return ObjectResult{}, fmt.Errorf("backup create for volume %s got no definite answer and was not repeated; "+
+				"check the volume's backups with user.volume.get before retrying: %v", in.VolumeID, err)
+		}
+		return ObjectResult{}, err
+	}
+	return ObjectResult{Object: obj}, nil
 }
 
 func deleteVolumeBackup(ctx context.Context, cl *client.Client, in VolumeBackupDeleteInput) (ObjectResult, error) {
@@ -77,7 +98,10 @@ func restoreVolumeSnapshot(ctx context.Context, cl *client.Client, in VolumeRest
 }
 
 func registerParityVolumeTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "user.volume.backup_create", Description: "Create a backup of a volume (returns an async queue handle)."}, createVolumeBackup)
+	Register(s, deps, Spec{
+		Name:        "user.volume.backup_create",
+		Description: "Create a backup of a volume (returns an async queue handle)." + volumeAdmitNote,
+	}, createVolumeBackup)
 	Register(s, deps, Spec{
 		Name:        "user.volume.backup_delete",
 		Description: "Delete a volume backup. DESTRUCTIVE: requires \"confirm\": true.",

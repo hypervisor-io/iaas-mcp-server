@@ -213,9 +213,14 @@ func MapError(err error) error {
 	case 422:
 		return fmt.Errorf("validation failed: %w", apiErr)
 	case 429:
-		// The shared client already retried with exponential backoff; a 429
-		// that still reaches here is surfaced as retryable so the agent can
-		// back off and try again.
+		// Idempotent requests were already retried by the shared client; a
+		// single-attempt command (volume mutations, snapshot and backup
+		// creation) is never replayed by it, and its gate refusals are waited
+		// out by volumeop. A 429 that still reaches here is surfaced as
+		// retryable, with the wait the API named in Retry-After when present.
+		if apiErr.RetryAfter > 0 {
+			return fmt.Errorf("rate limited (retryable, retry after %s): %w", apiErr.RetryAfter, apiErr)
+		}
 		return fmt.Errorf("rate limited (retryable): %w", apiErr)
 	default:
 		return apiErr
