@@ -188,7 +188,7 @@ func TestMicrovmImage_KitMetadataPassesThrough(t *testing.T) {
 	kit := map[string]any{
 		"category": "agent", "icon": "claude", "tagline": "Coding agent",
 		"default_plan_vcpu": float64(2), "default_lifetime_seconds": float64(3600),
-		"suggested_secrets": []any{map[string]any{"name": "ANTHROPIC_API_KEY", "label": "Anthropic API key", "help_url": "https://console.anthropic.com/settings/keys"}},
+		"suggested_secrets": []any{map[string]any{"name": "ANTHROPIC_API_KEY", "provider": "anthropic", "label": "Anthropic API key", "placeholder": "your Anthropic API key", "icon": "anthropic", "role": "provider", "help_url": "https://console.anthropic.com/settings/keys"}},
 		"sort_order":        float64(10),
 	}
 	withKit := func(m map[string]any) map[string]any {
@@ -220,6 +220,14 @@ func TestMicrovmImage_KitMetadataPassesThrough(t *testing.T) {
 		secrets, _ := img["suggested_secrets"].([]any)
 		if len(secrets) != 1 || secrets[0].(map[string]any)["name"] != "ANTHROPIC_API_KEY" || secrets[0].(map[string]any)["help_url"] == nil {
 			t.Errorf("%s suggested_secrets = %v", where, img["suggested_secrets"])
+			return
+		}
+		// KH-5: the launcher fields of an entry survive the projection.
+		entry := secrets[0].(map[string]any)
+		for key, want := range map[string]string{"provider": "anthropic", "placeholder": "your Anthropic API key", "icon": "anthropic", "role": "provider"} {
+			if entry[key] != want {
+				t.Errorf("%s suggested_secrets[0].%s = %v; want %q", where, key, entry[key], want)
+			}
 		}
 	}
 	var list tools.MicrovmImageListResult
