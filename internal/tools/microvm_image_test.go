@@ -181,3 +181,54 @@ func TestMicrovmImage_BuildAndDeleteConfirmGate(t *testing.T) {
 		t.Errorf("delete of an in-use image should fail")
 	}
 }
+
+// TestMicrovmImage_KitMetadataPassesThrough pins the seven kit launcher fields:
+// the image tools return raw maps, so a projection that strips one must fail.
+func TestMicrovmImage_KitMetadataPassesThrough(t *testing.T) {
+	kit := map[string]any{
+		"category": "agent", "icon": "claude", "tagline": "Coding agent",
+		"default_plan_vcpu": float64(2), "default_lifetime_seconds": float64(3600),
+		"suggested_secrets": []any{map[string]any{"name": "ANTHROPIC_API_KEY", "label": "Anthropic API key", "help_url": "https://console.anthropic.com/settings/keys"}},
+		"sort_order":        float64(10),
+	}
+	withKit := func(m map[string]any) map[string]any {
+		for k, v := range kit {
+			m[k] = v
+		}
+		return m
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /microvm/images", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"images": map[string]any{"current_page": 1, "last_page": 1,
+			"data": []any{withKit(map[string]any{"id": "img-1", "name": "claude", "status": "ready"})}}})
+	})
+	mux.HandleFunc("GET /microvm/image/{id}", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "image": withKit(map[string]any{"id": r.PathValue("id"), "name": "claude"}), "versions": []any{}, "microvms_count": float64(0)})
+	})
+	cs := connectSession(t, mux)
+
+	check := func(where string, img map[string]any) {
+		t.Helper()
+		for k := range kit {
+			if _, ok := img[k]; !ok {
+				t.Errorf("%s dropped kit key %q", where, k)
+			}
+		}
+		if img["category"] != "agent" || img["sort_order"] != float64(10) || img["default_lifetime_seconds"] != float64(3600) || img["default_plan_vcpu"] != float64(2) || img["icon"] != "claude" || img["tagline"] != "Coding agent" {
+			t.Errorf("%s kit scalars = %v", where, img)
+		}
+		secrets, _ := img["suggested_secrets"].([]any)
+		if len(secrets) != 1 || secrets[0].(map[string]any)["name"] != "ANTHROPIC_API_KEY" || secrets[0].(map[string]any)["help_url"] == nil {
+			t.Errorf("%s suggested_secrets = %v", where, img["suggested_secrets"])
+		}
+	}
+	var list tools.MicrovmImageListResult
+	unmarshalResult(t, callTool(t, cs, "user.microvm.image.list", map[string]any{}), &list)
+	if len(list.Images) != 1 {
+		t.Fatalf("list = %v", list)
+	}
+	check("image.list", list.Images[0])
+	var show tools.MicrovmImageShowResult
+	unmarshalResult(t, callTool(t, cs, "user.microvm.image.get", map[string]any{"id": "img-1"}), &show)
+	check("image.get", show.Image)
+}
