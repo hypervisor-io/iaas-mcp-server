@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -50,9 +51,10 @@ type CreateMicrovmImageInput struct {
 	SourceImage      string         `json:"source_image,omitempty" jsonschema:"container image reference, required when source_kind is oci"`
 	SourceRepo       string         `json:"source_repo,omitempty" jsonschema:"git repository URL, required when source_kind is git"`
 	SourceBranch     string         `json:"source_branch,omitempty" jsonschema:"git branch, optional when source_kind is git"`
-	AuthKind         string         `json:"auth_kind,omitempty" jsonschema:"registry or git_source, when the source needs credentials"`
-	RegistryUsername string         `json:"registry_username,omitempty" jsonschema:"registry username, required when auth_kind is registry"`
-	RegistryPassword string         `json:"registry_password,omitempty" jsonschema:"registry password, required when auth_kind is registry; stored encrypted and never returned"`
+	AuthKind         string         `json:"auth_kind,omitempty" jsonschema:"registry_secret (preferred), registry (deprecated, removed in 3.3.7) or git_source, when the source needs credentials"`
+	RegistrySecretID string         `json:"registry_secret_id,omitempty" jsonschema:"UUID of a registry credential in the sandbox secrets vault, required when auth_kind is registry_secret"`
+	RegistryUsername string         `json:"registry_username,omitempty" jsonschema:"deprecated, removed in 3.3.7, prefer registry_secret: registry username, required when auth_kind is registry"`
+	RegistryPassword string         `json:"registry_password,omitempty" jsonschema:"deprecated, removed in 3.3.7, prefer registry_secret: registry password, required when auth_kind is registry; stored encrypted and never returned"`
 	GitSourceID      string         `json:"git_source_id,omitempty" jsonschema:"UUID of an owned git source, required when auth_kind is git_source"`
 	Env              string         `json:"env,omitempty" jsonschema:"newline-separated KEY=value environment baked into the image, stored encrypted and never returned"`
 	LifecycleHooks   map[string]any `json:"lifecycle_hooks,omitempty" jsonschema:"default lifecycle hooks for microVMs running this image (run/resume/suspend/terminate, each {enabled, timeout, payload?})"`
@@ -122,6 +124,14 @@ func getMicrovmImage(ctx context.Context, cl *client.Client, in GetMicrovmImageI
 // caller actually set so the API applies its own defaults. base_image_id and
 // location_id are always sent - both are required by the API (C6).
 func createMicrovmImage(ctx context.Context, cl *client.Client, in CreateMicrovmImageInput) (MicrovmImageResult, error) {
+	// Refuse locally, before any request, a registry_secret_id that does not
+	// match the auth kind: the API would otherwise ignore or misread it.
+	if in.AuthKind == "registry_secret" && in.RegistrySecretID == "" {
+		return MicrovmImageResult{}, fmt.Errorf("registry_secret_id is required when auth_kind is registry_secret")
+	}
+	if in.AuthKind != "registry_secret" && in.RegistrySecretID != "" {
+		return MicrovmImageResult{}, fmt.Errorf("registry_secret_id can only be used with auth_kind registry_secret")
+	}
 	source := map[string]any{}
 	switch in.SourceKind {
 	case "dockerfile":
@@ -150,6 +160,9 @@ func createMicrovmImage(ctx context.Context, cl *client.Client, in CreateMicrovm
 		if in.AuthKind == "registry" {
 			auth["username"] = in.RegistryUsername
 			auth["password"] = in.RegistryPassword
+		}
+		if in.AuthKind == "registry_secret" {
+			auth["secret_id"] = in.RegistrySecretID
 		}
 		if in.AuthKind == "git_source" {
 			auth["git_source_id"] = in.GitSourceID
