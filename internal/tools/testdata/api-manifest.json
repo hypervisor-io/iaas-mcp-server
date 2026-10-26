@@ -9641,8 +9641,8 @@
         "reason": "imperative action, not representable as declarative IaC; deletion uses the recorded destination, claims before dispatch, and returns typed refusal or unconfirmed-dispatch errors with per-backup results and queued/refused counts on partial failure; unconfirmed Slave dispatch retains the live task/claim until terminal callback or proven-dead reconciliation"
       },
       "mcp": {
-        "status": "excluded",
-        "reason": "async dispatch semantics changed: an unconfirmed Slave send leaves the task/claim live until terminal callback or proven-dead reconciliation; consumer user.instance.destroy_backups was previously covered and must be reviewed before reenabling"
+        "status": "covered",
+        "tool": "user.instance.destroy_backups"
       }
     },
     {
