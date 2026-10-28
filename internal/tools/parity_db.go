@@ -33,14 +33,23 @@ type DBApplyParameterGroupInput struct {
 }
 
 type UpdateInstanceBackupPolicyInput struct {
-	ID                  string `json:"id" jsonschema:"UUID of the policy"`
-	Name                string `json:"name" jsonschema:"policy name"`
-	FullBackupFrequency string `json:"full_backup_frequency" jsonschema:"daily or weekly"`
-	FullBackupTime      string `json:"full_backup_time" jsonschema:"time of day H:i (UTC)"`
-	FullBackupDay       *int   `json:"full_backup_day,omitempty" jsonschema:"day of week 0-6 (required for weekly)"`
-	MaxIncrementalChain int    `json:"max_incremental_chain" jsonschema:"max incremental chain length (0-30)"`
-	RetentionCount      int    `json:"retention_count" jsonschema:"full backups to retain (1-365)"`
-	BackupDevice        string `json:"backup_device" jsonschema:"primary or all"`
+	ID                  string  `json:"id" jsonschema:"UUID of the policy"`
+	Name                *string `json:"name,omitempty" jsonschema:"new policy name; omission preserves"`
+	FullBackupFrequency *string `json:"full_backup_frequency,omitempty" jsonschema:"daily or weekly; omitted keeps current"`
+	FullBackupTime      *string `json:"full_backup_time,omitempty" jsonschema:"HH:MM in the policy timezone or account owner timezone"`
+	FullBackupDay       *int    `json:"full_backup_day,omitempty" jsonschema:"0-6 for weekly; weekly cannot clear its day"`
+	MaxIncrementalChain *int    `json:"max_incremental_chain,omitempty" jsonschema:"0-30; omitted preserves"`
+	RetentionCount      *int    `json:"retention_count,omitempty" jsonschema:"count retention 1-365; null preserves for GFS"`
+	BackupDevice        *string `json:"backup_device,omitempty" jsonschema:"primary or all; omitted preserves"`
+	RetentionMode       *string `json:"retention_mode,omitempty" jsonschema:"count or gfs; omission or null keeps the mode"`
+	Timezone            *string `json:"timezone,omitempty" jsonschema:"named IANA zone; omitted preserves, null clears; timezone-only edits preserve stored clock/day"`
+	KeepLast            *int    `json:"keep_last,omitempty" jsonschema:"GFS newest backups, 0-365; zero or null disables"`
+	KeepWithinDays      *int    `json:"keep_within_days,omitempty" jsonschema:"GFS recent days, 0-3650; zero or null disables"`
+	KeepDaily           *int    `json:"keep_daily,omitempty" jsonschema:"GFS calendar days, 0-365; zero or null disables"`
+	KeepWeekly          *int    `json:"keep_weekly,omitempty" jsonschema:"GFS ISO weeks, 0-520; zero or null disables"`
+	KeepMonthly         *int    `json:"keep_monthly,omitempty" jsonschema:"GFS calendar months, 0-120; zero or null disables"`
+	KeepYearly          *int    `json:"keep_yearly,omitempty" jsonschema:"GFS calendar years, 0-30; zero or null disables"`
+	present             map[string]bool
 }
 
 type UpdateDBBackupPolicyInput struct {
@@ -124,17 +133,15 @@ func applyDatabaseParameterGroup(ctx context.Context, cl *client.Client, in DBAp
 }
 
 func updateInstanceBackupPolicy(ctx context.Context, cl *client.Client, in UpdateInstanceBackupPolicyInput) (BackupPolicyResult, error) {
-	body := map[string]any{
-		"name":                  in.Name,
-		"full_backup_frequency": in.FullBackupFrequency,
-		"full_backup_time":      in.FullBackupTime,
-		"max_incremental_chain": in.MaxIncrementalChain,
-		"retention_count":       in.RetentionCount,
-		"backup_device":         in.BackupDevice,
-	}
-	if in.FullBackupDay != nil {
-		body["full_backup_day"] = *in.FullBackupDay
-	}
+	body := map[string]any{}
+	putPolicyField(body, in.present, "name", in.Name)
+	putPolicyField(body, in.present, "full_backup_frequency", in.FullBackupFrequency)
+	putPolicyField(body, in.present, "full_backup_time", in.FullBackupTime)
+	putPolicyField(body, in.present, "full_backup_day", in.FullBackupDay)
+	putPolicyField(body, in.present, "max_incremental_chain", in.MaxIncrementalChain)
+	putPolicyField(body, in.present, "backup_device", in.BackupDevice)
+	addInstancePolicyRetention(body, in.present, in.RetentionMode, in.Timezone, in.RetentionCount,
+		in.KeepLast, in.KeepWithinDays, in.KeepDaily, in.KeepWeekly, in.KeepMonthly, in.KeepYearly)
 	obj, err := cl.UpdateInstanceBackupPolicy(ctx, in.ID, body)
 	if err != nil {
 		return BackupPolicyResult{}, err
