@@ -110,7 +110,7 @@ sample (not exhaustive):
 | Load balancers | `user.load_balancer.create`, `user.load_balancer.frontend_create`, `user.load_balancer.backend_create`, `user.load_balancer.target_create` |
 | Storage | `user.volume.create`, `user.volume.snapshot_create`, `user.s3_bucket.create`, `user.s3_access_key.create` |
 | DNS | `user.dns_zone.create`, `user.dns_record_set.create`, `user.dns_record.create`, `user.dns_zone.attach_vpc` |
-| VPN | `user.vpn_gateway.create`, `user.vpn_gateway.add_peer`, `user.vpn_peering.create`, `user.vpn_gateway.peer_config` |
+| VPN | `user.vpn_gateway.create`, `user.vpn_gateway.add_peer`, `user.vpn_peering.create`, `user.vpn_gateway.peer_config`, `user.vpn_ipsec.create`, `user.vpn_ipsec.remote_settings` |
 | Autoscaling | `user.autoscaling_group.create`, `user.autoscaling_policy.create`, `user.autoscaling_group.pause` |
 | Compute add-ons | `user.image.create`, `user.docker_deployment.deploy_app`, `user.instance_backup_policy.create` |
 | MicroVMs | `user.microvm.create`, `user.microvm.list`, `user.microvm.image.create`, `user.microvm.settings.get`, `user.microvm.settings.set` |
