@@ -186,9 +186,23 @@ func restoreInstanceBackup(ctx context.Context, cl *client.Client, in RestoreIns
 	return okResult("restore queued"), nil
 }
 
+// maxBulkBackupIDs is the Master's per-request cap on POST .../backups/destroy (a bigger
+// list is a 422). The tool sends longer lists in chunks of this size; it is declared here
+// (not read from the client package) so it holds against any pinned client version.
+const maxBulkBackupIDs = 100
+
 func destroyInstanceBackups(ctx context.Context, cl *client.Client, in BulkDestroyInstanceBackupsInput) (OKResult, error) {
-	if err := cl.BulkDestroyInstanceBackups(ctx, in.ID, map[string]any{"backups": in.Backups}); err != nil {
-		return OKResult{}, err
+	for start := 0; start == 0 || start < len(in.Backups); start += maxBulkBackupIDs {
+		end := start + maxBulkBackupIDs
+		if end > len(in.Backups) {
+			end = len(in.Backups)
+		}
+		if err := cl.BulkDestroyInstanceBackups(ctx, in.ID, map[string]any{"backups": in.Backups[start:end]}); err != nil {
+			if start > 0 {
+				return OKResult{}, fmt.Errorf("backups %d-%d of %d failed after %d IDs were submitted in earlier chunks; inspect backup state before retrying: %w", start+1, end, len(in.Backups), start, err)
+			}
+			return OKResult{}, err
+		}
 	}
 	return okResult("backups destroy queued"), nil
 }
@@ -286,7 +300,7 @@ func registerInstanceOpsTools(s *mcp.Server, deps Deps) {
 	}, deleteInstanceBackup)
 	Register(s, deps, Spec{
 		Name:        "user.instance.destroy_backups",
-		Description: "Destroy multiple instance backups at once. DESTRUCTIVE: requires \"confirm\": true.",
+		Description: "Destroy multiple instance backups at once (at most 100 backup ids go in one API request; longer lists are sent in chunks of 100 and stop at the first refused chunk). DESTRUCTIVE: requires \"confirm\": true.",
 		Destructive: true,
 	}, destroyInstanceBackups)
 

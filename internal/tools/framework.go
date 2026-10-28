@@ -207,11 +207,11 @@ func MapError(err error) error {
 	}
 	switch apiErr.Status {
 	case 404:
-		return fmt.Errorf("not found: %w", apiErr)
+		return fmt.Errorf("not found: %w", err)
 	case 401, 403:
-		return fmt.Errorf("access denied: %w", apiErr)
+		return fmt.Errorf("access denied: %w", err)
 	case 422:
-		return fmt.Errorf("validation failed: %w", apiErr)
+		return fmt.Errorf("validation failed: %w", err)
 	case 429:
 		// Idempotent requests were already retried by the shared client; a
 		// single-attempt command (volume mutations, snapshot and backup
@@ -219,11 +219,11 @@ func MapError(err error) error {
 		// out by volumeop. A 429 that still reaches here is surfaced as
 		// retryable, with the wait the API named in Retry-After when present.
 		if apiErr.RetryAfter > 0 {
-			return fmt.Errorf("rate limited (retryable, retry after %s): %w", apiErr.RetryAfter, apiErr)
+			return fmt.Errorf("rate limited (retryable, retry after %s): %w", apiErr.RetryAfter, err)
 		}
-		return fmt.Errorf("rate limited (retryable): %w", apiErr)
+		return fmt.Errorf("rate limited (retryable): %w", err)
 	default:
-		return apiErr
+		return err
 	}
 }
 
