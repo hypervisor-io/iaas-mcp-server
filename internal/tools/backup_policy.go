@@ -19,12 +19,22 @@ func init() {
 // ── instance backup policy ──────────────────────────────────────────────────
 
 type CreateInstanceBackupPolicyInput struct {
+	RetentionMode  *string `json:"retention_mode,omitempty" jsonschema:"count (default) or gfs; GFS needs a positive keep rule"`
+	Timezone       *string `json:"timezone,omitempty" jsonschema:"named IANA timezone or null for account owner conversion; fixed offsets and aliases return invalid_timezone"`
+	KeepLast       *int    `json:"keep_last,omitempty" jsonschema:"GFS newest backups, 0-365; zero or null disables"`
+	KeepWithinDays *int    `json:"keep_within_days,omitempty" jsonschema:"GFS recent days, 0-3650; zero or null disables"`
+	KeepDaily      *int    `json:"keep_daily,omitempty" jsonschema:"GFS calendar days, 0-365; zero or null disables"`
+	KeepWeekly     *int    `json:"keep_weekly,omitempty" jsonschema:"GFS ISO weeks, 0-520; zero or null disables"`
+	KeepMonthly    *int    `json:"keep_monthly,omitempty" jsonschema:"GFS calendar months, 0-120; zero or null disables"`
+	KeepYearly     *int    `json:"keep_yearly,omitempty" jsonschema:"GFS calendar years, 0-30; zero or null disables"`
+	present        map[string]bool
+
 	Name                string `json:"name" jsonschema:"policy name"`
 	FullBackupFrequency string `json:"full_backup_frequency" jsonschema:"daily or weekly"`
-	FullBackupTime      string `json:"full_backup_time" jsonschema:"time of day H:i (UTC)"`
+	FullBackupTime      string `json:"full_backup_time" jsonschema:"HH:MM in the policy timezone, otherwise the account owner timezone"`
 	FullBackupDay       *int   `json:"full_backup_day,omitempty" jsonschema:"day of week 0-6 (required for weekly)"`
 	MaxIncrementalChain int    `json:"max_incremental_chain" jsonschema:"max incremental chain length (0-30)"`
-	RetentionCount      int    `json:"retention_count" jsonschema:"number of full backups to retain (1-365)"`
+	RetentionCount      *int   `json:"retention_count,omitempty" jsonschema:"count retention requires 1-365; optional for GFS"`
 	BackupDevice        string `json:"backup_device" jsonschema:"primary or all"`
 }
 
@@ -98,12 +108,11 @@ func createInstanceBackupPolicy(ctx context.Context, cl *client.Client, in Creat
 		"full_backup_frequency": in.FullBackupFrequency,
 		"full_backup_time":      in.FullBackupTime,
 		"max_incremental_chain": in.MaxIncrementalChain,
-		"retention_count":       in.RetentionCount,
 		"backup_device":         in.BackupDevice,
 	}
-	if in.FullBackupDay != nil {
-		body["full_backup_day"] = *in.FullBackupDay
-	}
+	putPolicyField(body, in.present, "full_backup_day", in.FullBackupDay)
+	addInstancePolicyRetention(body, in.present, in.RetentionMode, in.Timezone, in.RetentionCount,
+		in.KeepLast, in.KeepWithinDays, in.KeepDaily, in.KeepWeekly, in.KeepMonthly, in.KeepYearly)
 	obj, err := cl.CreateInstanceBackupPolicy(ctx, body)
 	if err != nil {
 		return BackupPolicyResult{}, err
