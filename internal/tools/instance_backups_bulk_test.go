@@ -2,18 +2,20 @@ package tools_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/hypervisor-io/iaas-mcp-server/internal/tools"
+	"github.com/hypervisor-io/terraform-provider-iaas/client"
 )
 
 func backupIDs(n int) []string {
 	ids := make([]string, n)
 	for i := range ids {
-		ids[i] = fmt.Sprintf("b-%03d", i)
+		ids[i] = fmt.Sprintf("00000000-0000-4000-8000-%012d", i)
 	}
 	return ids
 }
@@ -92,4 +94,47 @@ func TestManifest_InstanceBulkBackupDeleteIsCoveredByItsTool(t *testing.T) {
 		}
 	}
 	t.Fatal("manifest has no entry for the per-instance bulk backup delete")
+}
+
+func TestDestroyInstanceBackups_PartialRefusalPreservesSubmissionContext(t *testing.T) {
+	calls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /instance/{id}/backups/destroy", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			// Owned filtering may accept a chunk while queuing none of its submitted IDs.
+			writeJSON(w, 200, map[string]any{"success": true, "data": map[string]any{"queued": 0, "refused": 0, "results": []any{}}})
+			return
+		}
+		writeJSON(w, 409, map[string]any{"success": false, "message": "Backup deletes: 1 queued; 1 refused.", "data": map[string]any{"queued": 1, "refused": 1, "results": []any{map[string]any{"id": "accepted", "status": 200, "success": true}, map[string]any{"id": "busy", "status": 409, "success": false, "reason": "backup_being_deleted"}}}})
+	})
+	cs := connectSession(t, mux)
+	res := callTool(t, cs, "user.instance.destroy_backups", map[string]any{"id": "i1", "backups": backupIDs(250), "confirm": true})
+	if !res.IsError {
+		t.Fatal("expected tool error")
+	}
+	raw, _ := json.Marshal(res)
+	if !strings.Contains(string(raw), "100 IDs were submitted in earlier chunks") || strings.Contains(string(raw), "100 were queued") {
+		t.Fatalf("lost or overstated progress: %s", raw)
+	}
+	if calls != 2 {
+		t.Fatalf("calls=%d, want2", calls)
+	}
+}
+
+func TestMapError_PreservesBulkFailureContext(t *testing.T) {
+	for _, status := range []int{401, 403, 404, 409, 422, 429, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			cause := &client.APIError{Status: status, Message: "refused"}
+			wrapped := fmt.Errorf("backups 101-200 failed after 100 IDs were submitted: %w", cause)
+			mapped := tools.MapError(wrapped)
+			if !strings.Contains(mapped.Error(), "100 IDs were submitted") {
+				t.Fatalf("lost partial progress: %v", mapped)
+			}
+			var apiErr *client.APIError
+			if !errors.As(mapped, &apiErr) || apiErr != cause {
+				t.Fatalf("lost typed API error: %v", mapped)
+			}
+		})
+	}
 }

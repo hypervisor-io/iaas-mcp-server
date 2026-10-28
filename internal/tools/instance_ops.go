@@ -199,7 +199,7 @@ func destroyInstanceBackups(ctx context.Context, cl *client.Client, in BulkDestr
 		}
 		if err := cl.BulkDestroyInstanceBackups(ctx, in.ID, map[string]any{"backups": in.Backups[start:end]}); err != nil {
 			if start > 0 {
-				return OKResult{}, fmt.Errorf("backups %d-%d of %d refused after %d were queued: %w", start+1, end, len(in.Backups), start, err)
+				return OKResult{}, fmt.Errorf("backups %d-%d of %d failed after %d IDs were submitted in earlier chunks; inspect backup state before retrying: %w", start+1, end, len(in.Backups), start, err)
 			}
 			return OKResult{}, err
 		}
