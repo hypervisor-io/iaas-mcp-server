@@ -487,11 +487,38 @@ func (f ipsecFields) body(update bool) map[string]any {
 	return b
 }
 
-// scrubPSK removes a "psk" key from an object a tool is about to return. The
-// API never sends one; this keeps it that way whatever a future server does.
+// scrubPSK removes secret members at every depth, including arrays. Keep
+// psk_version: it is public rotation metadata, not a key.
 func scrubPSK(m map[string]any) map[string]any {
-	delete(m, "psk")
+	for key, value := range m {
+		switch strings.ToLower(key) {
+		case "psk", "pre_shared_key", "preshared_key":
+			delete(m, key)
+		default:
+			scrubIPsecValue(value)
+		}
+	}
 	return m
+}
+
+func scrubIPsecValue(value any) {
+	switch value := value.(type) {
+	case map[string]any:
+		scrubPSK(value)
+	case []any:
+		for _, item := range value {
+			scrubIPsecValue(item)
+		}
+	}
+}
+
+// At the tool boundary, even a malformed server error must not echo a submitted
+// key. Map first so the shared error mapper cannot unwrap an unsanitized cause.
+func redactIPsecWriteError(err error, key string) error {
+	if err == nil || key == "" {
+		return err
+	}
+	return errors.New(strings.ReplaceAll(MapError(err).Error(), key, "[redacted]"))
 }
 
 // ptrIfSet keeps "absent" (nil) distinct from "present but empty": the latter is
@@ -519,7 +546,7 @@ func ipsecRetryWait(err error) (time.Duration, bool) {
 		return 0, false
 	}
 	switch {
-	case apiErr.Reason == client.ReasonIpsecInstalling:
+	case apiErr.Status == http.StatusConflict && apiErr.Reason == client.ReasonIpsecInstalling:
 		return pollInterval(), true
 	case apiErr.Status == http.StatusTooManyRequests:
 		d := apiErr.RetryAfter
@@ -648,7 +675,7 @@ func listVpnIpsec(ctx context.Context, cl *client.Client, in ListVpnIpsecInput) 
 	if conns == nil {
 		conns = []map[string]any{}
 	}
-	return VpnIpsecListResult{Connections: conns, Gateway: gw}, nil
+	return VpnIpsecListResult{Connections: conns, Gateway: scrubPSK(gw)}, nil
 }
 
 func getVpnIpsec(ctx context.Context, cl *client.Client, in GetVpnIpsecInput) (VpnIpsecConnectionResult, error) {
@@ -660,7 +687,8 @@ func getVpnIpsec(ctx context.Context, cl *client.Client, in GetVpnIpsecInput) (V
 	return VpnIpsecConnectionResult{Connection: obj, Applied: obj["apply_state"] == "applied"}, nil
 }
 
-func createVpnIpsec(ctx context.Context, cl *client.Client, in CreateVpnIpsecInput) (VpnIpsecConnectionResult, error) {
+func createVpnIpsec(ctx context.Context, cl *client.Client, in CreateVpnIpsecInput) (result VpnIpsecConnectionResult, resultErr error) {
+	defer func() { resultErr = redactIPsecWriteError(resultErr, in.PSK) }()
 	f := createFields(in)
 	if err := f.validateCreate(); err != nil {
 		return VpnIpsecConnectionResult{}, err
@@ -755,7 +783,12 @@ func finishIpsecWrite(ctx context.Context, cl *client.Client, gwID, id string, c
 	return VpnIpsecConnectionResult{Connection: conn, Warnings: warnings, Applied: conn["apply_state"] == "applied"}, nil
 }
 
-func updateVpnIpsec(ctx context.Context, cl *client.Client, in UpdateVpnIpsecInput) (VpnIpsecConnectionResult, error) {
+func updateVpnIpsec(ctx context.Context, cl *client.Client, in UpdateVpnIpsecInput) (result VpnIpsecConnectionResult, resultErr error) {
+	defer func() {
+		if in.PSK != nil {
+			resultErr = redactIPsecWriteError(resultErr, *in.PSK)
+		}
+	}()
 	f := updateFields(in)
 	if err := f.validate(); err != nil {
 		return VpnIpsecConnectionResult{}, err
@@ -842,11 +875,11 @@ func registerVPNIpsecTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{
 		Name: "user.vpn_ipsec.list",
 		Description: "List the IPsec site-to-site connections of a VPN gateway with their live tunnel state (sa_state) and " +
-			"the gateway IPsec state (install state, apply state, generations). The pre-shared key is never returned.",
+			"the gateway IPsec state (install state, apply state, generations and unattributed diagnostic code/time). The pre-shared key is never returned.",
 	}, listVpnIpsec)
 	Register(s, deps, Spec{
 		Name: "user.vpn_ipsec.get",
-		Description: "Get one IPsec connection with its live status (sa_state, apply_state, last error). " +
+		Description: "Get one IPsec connection with its live status (sa_state, apply_state, typed last_error_code and fixed diagnostic sentence). " +
 			"The pre-shared key is never returned.",
 	}, getVpnIpsec)
 	Register(s, deps, Spec{
@@ -873,11 +906,11 @@ func registerVPNIpsecTools(s *mcp.Server, deps Deps) {
 		Name: "user.vpn_ipsec.restart",
 		Description: "Terminate and re-initiate an IPsec tunnel (also the retry after a phase 2 failure). The connection must " +
 			"be enabled. A 503 node_dispatch_unconfirmed means the restart is stored but the gateway has not confirmed it yet; " +
-			"it is retried automatically.",
+			"the platform retries the stored intent automatically. Do not repeat the restart to poll it; use user.vpn_ipsec.get. A successful reply confirms the request, not an established tunnel.",
 	}, restartVpnIpsec)
 	Register(s, deps, Spec{
 		Name: "user.vpn_ipsec.remote_settings",
 		Description: "Get the values to enter on the other device of an IPsec connection (identities, proposals, networks, " +
-			"lifetimes, NAT traversal, route hint). format text returns a plain-text copy. Never includes the pre-shared key.",
+			"lifetimes, NAT traversal, per-subnet route commands with subnet, cidr and gateway). format text returns the platform's plain-text summary; use json for route commands. Never includes the pre-shared key.",
 	}, remoteSettingsVpnIpsec)
 }

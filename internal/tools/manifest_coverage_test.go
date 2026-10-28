@@ -26,6 +26,7 @@ type manifestEndpoint struct {
 	MCP     struct {
 		Status string `json:"status"`
 		Tool   string `json:"tool"`
+		Reason string `json:"reason"`
 	} `json:"mcp"`
 }
 
@@ -53,7 +54,12 @@ func loadManifest(t *testing.T) manifest {
 // pass) and the pending endpoint ids. Shared by the positive and negative tests.
 func checkCoverage(registered map[string]bool, m manifest) (missing, pending []string) {
 	missingSet := map[string]bool{}
+	seen := map[string]bool{}
 	for _, e := range m.Endpoints {
+		if e.ID == "" || seen[e.ID] {
+			missingSet["empty or duplicate endpoint id: "+e.ID] = true
+		}
+		seen[e.ID] = true
 		switch e.MCP.Status {
 		case "covered":
 			if e.MCP.Tool == "" || !registered[e.MCP.Tool] {
@@ -61,6 +67,12 @@ func checkCoverage(registered map[string]bool, m manifest) (missing, pending []s
 			}
 		case "pending":
 			pending = append(pending, e.ID)
+		case "excluded":
+			if strings.TrimSpace(e.MCP.Reason) == "" {
+				missingSet["excluded endpoint has no reason: "+e.ID] = true
+			}
+		default:
+			missingSet["unknown MCP status "+e.MCP.Status+": "+e.ID] = true
 		}
 	}
 	for k := range missingSet {
@@ -123,5 +135,41 @@ func TestManifestMCPCoverage_NegativeDetectsPhantom(t *testing.T) {
 	missing, _ := checkCoverage(registered, phantom)
 	if len(missing) == 0 {
 		t.Fatal("negative test failed: checkCoverage did not flag the phantom user.nope.create tool")
+	}
+}
+
+func TestManifestMCPCoverage_AccountsForEveryEntry(t *testing.T) {
+	for _, status := range []string{"", "coverd", "excluded"} {
+		t.Run(status, func(t *testing.T) {
+			m := manifest{Endpoints: []manifestEndpoint{{ID: "user GET /api/synthetic", Surface: "user"}}}
+			m.Endpoints[0].MCP.Status = status
+			missing, _ := checkCoverage(map[string]bool{}, m)
+			if len(missing) == 0 {
+				t.Fatal("unaccounted endpoint or unexplained exclusion was silently ignored")
+			}
+		})
+	}
+}
+
+func TestManifestMCPCoverage_IPsecRoutes(t *testing.T) {
+	want := map[string]string{
+		"GET /api/vpn-gateway/{user_vpnGatewayId}/ipsec":                                          "user.vpn_ipsec.list",
+		"POST /api/vpn-gateway/{user_vpnGatewayId}/ipsec":                                         "user.vpn_ipsec.create",
+		"GET /api/vpn-gateway/{user_vpnGatewayId}/ipsec/{user_ipsecConnectionId}":                 "user.vpn_ipsec.get",
+		"PATCH /api/vpn-gateway/{user_vpnGatewayId}/ipsec/{user_ipsecConnectionId}":               "user.vpn_ipsec.update",
+		"DELETE /api/vpn-gateway/{user_vpnGatewayId}/ipsec/{user_ipsecConnectionId}":              "user.vpn_ipsec.delete",
+		"POST /api/vpn-gateway/{user_vpnGatewayId}/ipsec/{user_ipsecConnectionId}/restart":        "user.vpn_ipsec.restart",
+		"GET /api/vpn-gateway/{user_vpnGatewayId}/ipsec/{user_ipsecConnectionId}/remote-settings": "user.vpn_ipsec.remote_settings",
+	}
+	for _, endpoint := range loadManifest(t).Endpoints {
+		if tool, ok := want[strings.TrimPrefix(endpoint.ID, "user ")]; ok && endpoint.Surface == "user" {
+			if endpoint.MCP.Status != "covered" || endpoint.MCP.Tool != tool {
+				t.Errorf("IPsec manifest drift: %+v", endpoint)
+			}
+			delete(want, strings.TrimPrefix(endpoint.ID, "user "))
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing user IPsec routes: %v", want)
 	}
 }
