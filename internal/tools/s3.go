@@ -87,6 +87,11 @@ type UpdateS3AccessKeyInput struct {
 	Active *bool   `json:"active,omitempty" jsonschema:"enable or disable the key"`
 }
 
+type DeleteS3AccessKeyInput struct {
+	ID string `json:"id" jsonschema:"UUID of the access key to delete"`
+	Confirmation
+}
+
 type S3AccessKeyResult struct {
 	AccessKey map[string]any `json:"access_key"`
 	// Secret is populated ONLY on create (the server returns it once).
@@ -235,6 +240,13 @@ func updateS3AccessKey(ctx context.Context, cl *client.Client, in UpdateS3Access
 	return okResult("access key updated"), nil
 }
 
+func deleteS3AccessKey(ctx context.Context, cl *client.Client, in DeleteS3AccessKeyInput) (DeleteResult, error) {
+	if err := cl.DeleteS3AccessKey(ctx, in.ID); err != nil {
+		return DeleteResult{}, err
+	}
+	return DeleteResult{ID: in.ID, Deleted: true}, nil
+}
+
 func registerS3Tools(s *mcp.Server, deps Deps) {
 	// Buckets.
 	Register(s, deps, Spec{Name: "user.s3_bucket.create", Description: "Create an S3 bucket (read back by name; create returns no id). The name must be unique across the whole platform (every account and S3 server, deleted buckets included) and follow the AWS S3 naming rules: 3-63 characters; lowercase letters, digits, dots and hyphens only; begin and end with a letter or digit; no two adjacent dots; not formatted as an IP address; no xn--, sthree- or amzn-s3-demo- prefix; no -s3alias, --ol-s3, .mrap, --x-s3 or --table-s3 suffix. A taken or invalid name is refused with 422 (errors.name) and nothing is created."}, createS3Bucket)
@@ -243,7 +255,7 @@ func registerS3Tools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.s3_bucket.set_acl", Description: "Set a bucket's ACL (public, private, upload, or download)."}, setS3BucketACL)
 	Register(s, deps, Spec{
 		Name:        "user.s3_bucket.delete",
-		Description: "Delete an S3 bucket. DESTRUCTIVE: requires \"confirm\": true.",
+		Description: "Delete an S3 bucket. DESTRUCTIVE: requires \"confirm\": true. The delete is queued (HTTP 202, status deleting) and finishes asynchronously; check the bucket (delete_state deleting or failed, delete_error) and call delete again to retry a failed one. A delete already running answers 409 delete_in_progress.",
 		Destructive: true,
 	}, deleteS3Bucket)
 	Register(s, deps, Spec{Name: "user.s3_bucket.list_keys", Description: "List access keys attached to a bucket."}, listS3BucketKeys)
@@ -256,4 +268,9 @@ func registerS3Tools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.s3_access_key.list", Description: "List all S3 access keys (secrets not included)."}, listS3AccessKeys)
 	Register(s, deps, Spec{Name: "user.s3_access_key.get", Description: "Get an S3 access key by UUID (secret not included)."}, getS3AccessKey)
 	Register(s, deps, Spec{Name: "user.s3_access_key.update", Description: "Update an S3 access key's name or active state."}, updateS3AccessKey)
+	Register(s, deps, Spec{
+		Name:        "user.s3_access_key.delete",
+		Description: "Delete an S3 access key and remove its credentials from the storage servers. DESTRUCTIVE: requires \"confirm\": true. If a storage server cannot be reached or refuses, the key is kept and the call fails with a 502 (storage_unreachable or remote_delete_failed); repeat it.",
+		Destructive: true,
+	}, deleteS3AccessKey)
 }

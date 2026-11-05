@@ -1,6 +1,7 @@
 package tools_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -59,6 +60,18 @@ func s3Mock() http.Handler {
 	})
 	mux.HandleFunc("PATCH /object-storage/access-key/{id}", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "updated"})
+	})
+	mux.HandleFunc("DELETE /object-storage/access-key/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("id") == "akr-down" {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"success": false, "reason": "storage_unreachable", "message": "A storage server is not reachable right now, so the key was not deleted. Try again."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "Access key deleted successfully!"})
+	})
+	mux.HandleFunc("POST /object-storage/bucket/{id}/object/public-url", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "url": "https://s3.example.com/b/" + body["object_key"].(string) + "?X-Amz-Signature=x", "expires_in": body["expires_in"], "expires_at": "2026-11-05T15:00:00+00:00"})
 	})
 	return mux
 }
@@ -132,5 +145,38 @@ func TestS3AccessKey_CreateReturnsSecretOnce(t *testing.T) {
 	unmarshalResult(t, res, &ok)
 	if !ok.OK {
 		t.Errorf("update ok = false")
+	}
+}
+
+func TestS3AccessKey_DeleteNeedsConfirmAndSurfacesAKeptKey(t *testing.T) {
+	cs := connectSession(t, s3Mock())
+
+	res := callTool(t, cs, "user.s3_access_key.delete", map[string]any{"id": "akr-1"})
+	if !res.IsError {
+		t.Fatalf("delete without confirm should refuse; got %q", resultText(t, res))
+	}
+
+	res = callTool(t, cs, "user.s3_access_key.delete", map[string]any{"id": "akr-1", "confirm": true})
+	var del tools.DeleteResult
+	unmarshalResult(t, res, &del)
+	if !del.Deleted || del.ID != "akr-1" {
+		t.Errorf("confirmed delete result = %+v", del)
+	}
+
+	// A storage server that could not be reached keeps the key: the tool must fail, not report Deleted.
+	res = callTool(t, cs, "user.s3_access_key.delete", map[string]any{"id": "akr-down", "confirm": true})
+	if !res.IsError {
+		t.Fatalf("a 502 must surface as a tool error; got %q", resultText(t, res))
+	}
+}
+
+func TestS3ObjectPublicURL_PassesExpiryAndReturnsIt(t *testing.T) {
+	cs := connectSession(t, s3Mock())
+
+	res := callTool(t, cs, "user.s3_bucket.object_public_url", map[string]any{"bucket_id": "bkt-1", "object_key": "a.txt", "expires_in": 600})
+	var out tools.URLResult
+	unmarshalResult(t, res, &out)
+	if out.ExpiresIn != 600 || out.ExpiresAt == "" || !strings.Contains(out.URL, "X-Amz-Signature") {
+		t.Errorf("result = %+v", out)
 	}
 }

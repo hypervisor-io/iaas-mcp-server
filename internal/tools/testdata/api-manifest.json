@@ -5696,6 +5696,7 @@
       "method": "DELETE",
       "path": "/api/v1/s3/access-key/{keyId}",
       "surface": "admin",
+      "contract_notes": "341-S3B: the key's remote user is now removed on every enabled storage server (and on every server of an attached bucket) and read back as gone, whatever its attach state. When a storage server cannot be reached or refuses, the key is kept and the answer is a typed 502 (storage_unreachable or remote_delete_failed); repeat the call.",
       "opentofu": {
         "status": "excluded",
         "reason": "admin api/v1 surface; the OpenTofu provider is user-scoped IaC and does not model admin endpoints"
@@ -5766,6 +5767,7 @@
       "method": "DELETE",
       "path": "/api/v1/s3/bucket/{bucketId}",
       "surface": "admin",
+      "contract_notes": "341-S3B: same change as the user endpoint: 202 {success, status:'deleting'}, bucket fields delete_state and delete_error, 409 delete_in_progress, retry converges.",
       "opentofu": {
         "status": "excluded",
         "reason": "admin api/v1 surface; the OpenTofu provider is user-scoped IaC and does not model admin endpoints"
@@ -5878,6 +5880,7 @@
       "method": "POST",
       "path": "/api/v1/s3/bucket/{s3BucketId}/object/public-url",
       "surface": "admin",
+      "contract_notes": "341-S3B: same change as the user endpoint. The link is a presigned GET signed with the bucket's own key (expires_in 60..604800, default 3600), the response gains expires_in and expires_at, and failures are typed statuses (422, 404, 409, 502 with a reason) instead of 400/200 success:false. The bucket ACL is no longer touched.",
       "opentofu": {
         "status": "excluded",
         "reason": "admin api/v1 surface; the OpenTofu provider is user-scoped IaC and does not model admin endpoints"
@@ -12810,6 +12813,21 @@
       }
     },
     {
+      "id": "user DELETE /api/object-storage/access-key/{user_s3AccessKeyId}",
+      "method": "DELETE",
+      "path": "/api/object-storage/access-key/{user_s3AccessKeyId}",
+      "surface": "user",
+      "contract_notes": "341-S3B: new route (it did not exist; the call answered 405). Removes the key's remote user on every enabled storage server and every server of an attached bucket, reads it back as gone, then deletes the key. A storage server that cannot be reached or refuses keeps the key and answers a typed 502 (storage_unreachable or remote_delete_failed); repeat the call. Needs the s3_buckets.delete permission.",
+      "opentofu": {
+        "status": "covered",
+        "type": "iaas_s3_access_key"
+      },
+      "mcp": {
+        "status": "covered",
+        "tool": "user.s3_access_key.delete"
+      }
+    },
+    {
       "id": "user GET /api/object-storage/access-keys",
       "method": "GET",
       "path": "/api/object-storage/access-keys",
@@ -12842,6 +12860,7 @@
       "method": "DELETE",
       "path": "/api/object-storage/bucket/{user_s3BucketId}",
       "surface": "user",
+      "contract_notes": "341-S3B: the delete is asynchronous and now answers 202 {success, status:'deleting'} instead of 200 'deleted'. The bucket gains delete_state (null, deleting, failed) and delete_error (typed kind) so a failed delete is visible; DELETE again retries and converges, including for buckets holding unfinished multipart uploads. A delete already running answers 409 reason delete_in_progress.",
       "opentofu": {
         "status": "covered",
         "type": "iaas_s3_bucket"
@@ -12926,6 +12945,7 @@
       "method": "POST",
       "path": "/api/object-storage/bucket/{user_s3BucketId}/object/public-url",
       "surface": "user",
+      "contract_notes": "341-S3B: the link is now a SigV4 presigned GET signed with the bucket's own key, valid for expires_in seconds (optional, 60..604800, default 3600); the response gains expires_in and expires_at. Failures are typed statuses instead of HTTP 200 with success:false: 422 bad object_key or expires_in, 404 object_not_found, 409 bucket suspended or its access turned off, 502 storage unreachable, each with a reason. The bucket ACL is no longer touched by this call.",
       "opentofu": {
         "status": "excluded",
         "reason": "imperative action, not representable as declarative IaC"

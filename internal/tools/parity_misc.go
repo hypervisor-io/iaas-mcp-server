@@ -32,10 +32,13 @@ type GeneratedSSHKeyResult struct {
 type S3ObjectPublicURLInput struct {
 	BucketID  string `json:"bucket_id" jsonschema:"UUID of the bucket"`
 	ObjectKey string `json:"object_key" jsonschema:"key of the object (max 1024 chars)"`
+	ExpiresIn *int   `json:"expires_in,omitempty" jsonschema:"link lifetime in seconds, 60 to 604800 (default 3600)"`
 }
 
 type URLResult struct {
-	URL string `json:"url"`
+	URL       string `json:"url"`
+	ExpiresIn int    `json:"expires_in,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
 type DnsRecordHealthCheckInput struct {
@@ -99,12 +102,21 @@ func generateSSHKey(ctx context.Context, cl *client.Client, in GenerateSSHKeyInp
 }
 
 func s3ObjectPublicURL(ctx context.Context, cl *client.Client, in S3ObjectPublicURLInput) (URLResult, error) {
-	obj, err := cl.GetS3BucketObjectPublicUrl(ctx, in.BucketID, map[string]any{"object_key": in.ObjectKey})
+	body := map[string]any{"object_key": in.ObjectKey}
+	if in.ExpiresIn != nil {
+		body["expires_in"] = *in.ExpiresIn
+	}
+	obj, err := cl.GetS3BucketObjectPublicUrl(ctx, in.BucketID, body)
 	if err != nil {
 		return URLResult{}, err
 	}
 	url, _ := obj["url"].(string)
-	return URLResult{URL: url}, nil
+	res := URLResult{URL: url}
+	if n, ok := obj["expires_in"].(float64); ok {
+		res.ExpiresIn = int(n)
+	}
+	res.ExpiresAt, _ = obj["expires_at"].(string)
+	return res, nil
 }
 
 func setDnsRecordHealthCheck(ctx context.Context, cl *client.Client, in DnsRecordHealthCheckInput) (ObjectResult, error) {
@@ -153,7 +165,7 @@ func registerParityMiscTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.alert_rule.acknowledge", Description: "Acknowledge a firing alert rule."}, acknowledgeAlertRule)
 	Register(s, deps, Spec{Name: "user.notification_channel.test", Description: "Send a test notification to a channel."}, testNotificationChannel)
 	Register(s, deps, Spec{Name: "user.ssh_key.generate", Description: "Server-generate an SSH keypair; the private key is returned once."}, generateSSHKey)
-	Register(s, deps, Spec{Name: "user.s3_bucket.object_public_url", Description: "Get a public URL for an object in a bucket."}, s3ObjectPublicURL)
+	Register(s, deps, Spec{Name: "user.s3_bucket.object_public_url", Description: "Get a time-limited download link for one object in a bucket: a presigned URL that works without credentials until expires_at (expires_in 60 to 604800 seconds, default 3600). The object must exist; the bucket ACL is not changed. Refusals are typed: 404 no such object, 409 bucket suspended or its access turned off, 502 storage server unreachable."}, s3ObjectPublicURL)
 	Register(s, deps, Spec{Name: "user.dns_record.set_health_check", Description: "Set a health check on a DNS record."}, setDnsRecordHealthCheck)
 	Register(s, deps, Spec{
 		Name:        "user.dns_record.delete_health_check",
