@@ -21,7 +21,7 @@ func init() {
 // ── bucket inputs / outputs ─────────────────────────────────────────────────
 
 type CreateS3BucketInput struct {
-	Name       string `json:"name" jsonschema:"bucket name"`
+	Name       string `json:"name" jsonschema:"bucket name: unique across the whole platform; 3-63 characters, lowercase letters, digits, dots and hyphens, begin and end with a letter or digit, no adjacent dots, not an IP address, no xn--/sthree-/amzn-s3-demo- prefix, no -s3alias/--ol-s3/.mrap/--x-s3/--table-s3 suffix"`
 	S3PlanID   string `json:"s3_plan_id" jsonschema:"UUID of the S3 plan"`
 	S3ServerID string `json:"s3_server_id" jsonschema:"UUID of the S3 server"`
 }
@@ -237,7 +237,7 @@ func updateS3AccessKey(ctx context.Context, cl *client.Client, in UpdateS3Access
 
 func registerS3Tools(s *mcp.Server, deps Deps) {
 	// Buckets.
-	Register(s, deps, Spec{Name: "user.s3_bucket.create", Description: "Create an S3 bucket (read back by name; create returns no id)."}, createS3Bucket)
+	Register(s, deps, Spec{Name: "user.s3_bucket.create", Description: "Create an S3 bucket (read back by name; create returns no id). The name must be unique across the whole platform (every account and S3 server, deleted buckets included) and follow the AWS S3 naming rules: 3-63 characters; lowercase letters, digits, dots and hyphens only; begin and end with a letter or digit; no two adjacent dots; not formatted as an IP address; no xn--, sthree- or amzn-s3-demo- prefix; no -s3alias, --ol-s3, .mrap, --x-s3 or --table-s3 suffix. A taken or invalid name is refused with 422 (errors.name) and nothing is created."}, createS3Bucket)
 	Register(s, deps, Spec{Name: "user.s3_bucket.list", Description: "List all S3 buckets owned by the caller."}, listS3Buckets)
 	Register(s, deps, Spec{Name: "user.s3_bucket.get", Description: "Get an S3 bucket by UUID, including its access credentials and endpoint."}, getS3Bucket)
 	Register(s, deps, Spec{Name: "user.s3_bucket.set_acl", Description: "Set a bucket's ACL (public, private, upload, or download)."}, setS3BucketACL)
