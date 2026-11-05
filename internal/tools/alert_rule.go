@@ -21,7 +21,7 @@ func init() {
 type CreateAlertRuleInput struct {
 	Name             string   `json:"name" jsonschema:"alert rule name"`
 	ResourceType     string   `json:"resource_type" jsonschema:"instance, managed_database, load_balancer, vpn_gateway, or certificate"`
-	Metric           string   `json:"metric" jsonschema:"metric to evaluate (e.g. cpu, memory, or for certificate: days_until_expiry, status)"`
+	Metric           string   `json:"metric" jsonschema:"metric id from the catalog for the resource type. instance: status, cpu, memory, disk, network_rx, network_tx, disk_read_iops, disk_write_iops. managed_database: status, cpu, memory, disk, connections, queries_per_sec, slow_queries, replication_lag, cache_hit_ratio, deadlocks. load_balancer: status, cpu, memory, frontend_req_rate, frontend_sessions, frontend_conn_rate, backend_response_time, backend_queue, backend_conn_errors, http_4xx, http_5xx. vpn_gateway: status, cpu, memory, network_rx, network_tx. certificate: days_until_expiry, status. Legacy aliases cpu_pct, mem_pct, memory_pct, disk_pct are still accepted for compatibility; prefer the catalog ids"`
 	Operator         string   `json:"operator" jsonschema:"gt, lt, gte, lte, or eq"`
 	Threshold        float64  `json:"threshold" jsonschema:"threshold value"`
 	ResourceID       string   `json:"resource_id,omitempty" jsonschema:"optional specific resource UUID (omit to match all of the type)"`
@@ -39,7 +39,7 @@ type ListAlertRulesInput struct{}
 type UpdateAlertRuleInput struct {
 	ID               string   `json:"id" jsonschema:"UUID of the alert rule"`
 	Name             *string  `json:"name,omitempty" jsonschema:"new name"`
-	Metric           *string  `json:"metric,omitempty" jsonschema:"new metric"`
+	Metric           *string  `json:"metric,omitempty" jsonschema:"new metric id (catalog id such as cpu preferred; legacy aliases cpu_pct, mem_pct, memory_pct, disk_pct still accepted)"`
 	Operator         *string  `json:"operator,omitempty" jsonschema:"new operator"`
 	Threshold        *float64 `json:"threshold,omitempty" jsonschema:"new threshold"`
 	Enabled          *bool    `json:"enabled,omitempty" jsonschema:"enable or disable the rule"`
@@ -146,7 +146,7 @@ func deleteAlertRule(ctx context.Context, cl *client.Client, in DeleteAlertRuleI
 }
 
 func registerAlertRuleTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "user.alert_rule.create", Description: "Create a metric alert rule."}, createAlertRule)
+	Register(s, deps, Spec{Name: "user.alert_rule.create", Description: "Create a metric alert rule. The metric is stored exactly as sent; use the catalog ids (cpu, memory, disk, status, ...) as canonical, the legacy aliases cpu_pct, mem_pct, memory_pct and disk_pct are accepted for compatibility."}, createAlertRule)
 	Register(s, deps, Spec{Name: "user.alert_rule.list", Description: "List all alert rules owned by the caller."}, listAlertRules)
 	Register(s, deps, Spec{Name: "user.alert_rule.get", Description: "Get an alert rule by UUID."}, getAlertRule)
 	Register(s, deps, Spec{Name: "user.alert_rule.update", Description: "Update an alert rule's fields or attached channels."}, updateAlertRule)

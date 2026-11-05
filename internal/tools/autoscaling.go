@@ -34,6 +34,7 @@ type CreateAutoscalingGroupInput struct {
 	MaxInstances      *int     `json:"max_instances,omitempty" jsonschema:"maximum instance count"`
 	CloudInit         string   `json:"cloud_init,omitempty" jsonschema:"optional cloud-init user data"`
 	SSHKeys           []string `json:"ssh_keys,omitempty" jsonschema:"SSH key UUIDs"`
+	UserScripts       []string `json:"user_scripts,omitempty" jsonschema:"UUIDs of your saved user scripts, run via cloud-init on every new instance (ids not found or not owned by the account are refused)"`
 	SecurityGroupIDs  []string `json:"security_group_ids,omitempty" jsonschema:"security group UUIDs"`
 }
 
@@ -139,6 +140,9 @@ func createAutoscalingGroup(ctx context.Context, cl *client.Client, in CreateAut
 	}
 	if in.SSHKeys != nil {
 		body["ssh_keys"] = in.SSHKeys
+	}
+	if in.UserScripts != nil {
+		body["user_scripts"] = in.UserScripts
 	}
 	if in.SecurityGroupIDs != nil {
 		body["security_group_ids"] = in.SecurityGroupIDs

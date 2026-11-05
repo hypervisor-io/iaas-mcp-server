@@ -34,6 +34,7 @@ type CreateManagedDatabaseInput struct {
 	VPCSubnetID       string `json:"vpc_subnet_id" jsonschema:"UUID of the VPC subnet"`
 	LocationID        string `json:"location_id,omitempty" jsonschema:"optional location (hypervisor group) UUID"`
 	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
+	ParameterGroupID  string `json:"parameter_group_id,omitempty" jsonschema:"optional UUID of one of your parameter groups with the same engine, applied to the new database (unknown or foreign group: 404, engine mismatch: 422)"`
 }
 
 type GetManagedDatabaseInput struct {
@@ -130,6 +131,9 @@ func createManagedDatabase(ctx context.Context, cl *client.Client, in CreateMana
 	}
 	if loc := resolveLocationID(in.LocationID, in.HypervisorGroupID); loc != "" {
 		body["location_id"] = loc
+	}
+	if in.ParameterGroupID != "" {
+		body["parameter_group_id"] = in.ParameterGroupID
 	}
 	return createManagedDatabaseAndWait(ctx, cl, func() (map[string]any, error) {
 		return cl.CreateManagedDatabase(ctx, body)
