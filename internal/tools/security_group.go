@@ -61,9 +61,18 @@ type SecurityGroupInstancesInput struct {
 	InstanceIDs     []string `json:"instance_ids" jsonschema:"UUIDs of the instances to attach or detach"`
 }
 
+// SecurityGroupSandboxesInput names the sandboxes (MicroVMs) to attach a group to
+// or detach it from. The group applies to the whole sandbox, every network
+// interface.
+type SecurityGroupSandboxesInput struct {
+	SecurityGroupID string   `json:"security_group_id" jsonschema:"UUID of the security group (owned by the account that owns the sandboxes)"`
+	SandboxIDs      []string `json:"sandbox_ids" jsonschema:"UUIDs of the sandboxes (MicroVMs) to attach or detach, 1 to 50"`
+}
+
 type SecurityGroupResult struct {
 	SecurityGroup     map[string]any   `json:"security_group"`
 	AttachedInstances []map[string]any `json:"attached_instances,omitempty"`
+	AttachedSandboxes []map[string]any `json:"attached_sandboxes,omitempty"`
 }
 
 type SecurityGroupListResult struct {
@@ -98,6 +107,7 @@ func getSecurityGroup(ctx context.Context, cl *client.Client, in GetSecurityGrou
 	return SecurityGroupResult{
 		SecurityGroup:     sg,
 		AttachedInstances: asObjectList(env["attached_instances"]),
+		AttachedSandboxes: asObjectList(env["attached_sandboxes"]),
 	}, nil
 }
 
@@ -168,6 +178,20 @@ func detachSecurityGroupInstances(ctx context.Context, cl *client.Client, in Sec
 	return okResult("instances detached"), nil
 }
 
+func attachSecurityGroupSandboxes(ctx context.Context, cl *client.Client, in SecurityGroupSandboxesInput) (OKResult, error) {
+	if err := cl.AttachSecurityGroupSandboxes(ctx, in.SecurityGroupID, in.SandboxIDs); err != nil {
+		return OKResult{}, err
+	}
+	return okResult("sandboxes attached"), nil
+}
+
+func detachSecurityGroupSandboxes(ctx context.Context, cl *client.Client, in SecurityGroupSandboxesInput) (OKResult, error) {
+	if err := cl.DetachSecurityGroupSandboxes(ctx, in.SecurityGroupID, in.SandboxIDs); err != nil {
+		return OKResult{}, err
+	}
+	return okResult("sandboxes detached"), nil
+}
+
 func registerSecurityGroupTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{
 		Name:        "user.security_group.create",
@@ -181,7 +205,7 @@ func registerSecurityGroupTools(s *mcp.Server, deps Deps) {
 
 	Register(s, deps, Spec{
 		Name:        "user.security_group.get",
-		Description: "Get a security group by UUID, including its rules and attached instances.",
+		Description: "Get a security group by UUID, including its rules, attached instances and attached sandboxes.",
 	}, getSecurityGroup)
 
 	Register(s, deps, Spec{
@@ -210,4 +234,14 @@ func registerSecurityGroupTools(s *mcp.Server, deps Deps) {
 		Name:        "user.security_group.detach_instances",
 		Description: "Detach a security group from one or more instances.",
 	}, detachSecurityGroupInstances)
+
+	Register(s, deps, Spec{
+		Name:        "user.security_group.attach_sandboxes",
+		Description: "Attach a security group to one or more sandboxes (MicroVMs). The group applies to the whole sandbox, every network interface, and its node enforces it within about 10 seconds. All-or-nothing; the group must be owned by the account, a sandbox must not be killed, and a sandbox carries at most 10 groups.",
+	}, attachSecurityGroupSandboxes)
+
+	Register(s, deps, Spec{
+		Name:        "user.security_group.detach_sandboxes",
+		Description: "Detach a security group from one or more sandboxes (MicroVMs). A revocation: the node applies it within about 10 seconds. Detaching a group that is not attached is a no-op.",
+	}, detachSecurityGroupSandboxes)
 }

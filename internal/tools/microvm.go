@@ -2,6 +2,10 @@ package tools
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -31,10 +35,11 @@ func init() {
 // ── inputs / outputs ────────────────────────────────────────────────────────
 
 type ListMicrovmsInput struct {
-	Search      string `json:"search,omitempty" jsonschema:"filter by name substring"`
-	State       string `json:"state,omitempty" jsonschema:"filter by state: creating, running, paused, stopped, killed, error"`
-	ImageID     string `json:"image_id,omitempty" jsonschema:"filter by image UUID"`
-	ConnectorID string `json:"connector_id,omitempty" jsonschema:"filter by owning connector UUID"`
+	Search      string            `json:"search,omitempty" jsonschema:"filter by name substring"`
+	State       string            `json:"state,omitempty" jsonschema:"filter by state: creating, running, paused, stopped, killed, error"`
+	ImageID     string            `json:"image_id,omitempty" jsonschema:"filter by image UUID"`
+	ConnectorID string            `json:"connector_id,omitempty" jsonschema:"filter by owning connector UUID"`
+	Metadata    map[string]string `json:"metadata,omitempty" jsonschema:"filter by customer metadata: every key=value pair must match exactly (AND)"`
 }
 
 type GetMicrovmInput struct {
@@ -49,7 +54,7 @@ type MicrovmNetworkEntryInput struct {
 	SubnetID         string   `json:"subnet_id,omitempty" jsonschema:"kind public only, and optional even then (C8.1): a public IPv4 subnet is picked automatically after placement when omitted; set this only to pin a specific subnet"`
 	VpcSubnetID      string   `json:"vpc_subnet_id,omitempty" jsonschema:"required when kind is vpc; must be a VPC subnet owned by the account"`
 	StaticIPID       string   `json:"static_ip_id,omitempty" jsonschema:"kind public only (C8.3): maps one of the account's already-allocated static IPs in location_id onto this NIC instead of an auto-assigned address"`
-	SecurityGroupIDs []string `json:"security_group_ids,omitempty" jsonschema:"security groups owned by the account, applied to this NIC"`
+	SecurityGroupIDs []string `json:"security_group_ids,omitempty" jsonschema:"same as the top-level security_group_ids, kept for existing clients. Groups apply to the whole sandbox, not to one NIC: every network entry must name the same set, otherwise the request is refused (422 security_groups_differ_per_nic). Prefer the top-level field"`
 	RateMbit         int      `json:"rate_mbit,omitempty" jsonschema:"per-NIC rate limit in Mbit/s"`
 }
 
@@ -61,7 +66,8 @@ type CreateMicrovmInput struct {
 	ImageID            string                     `json:"image_id" jsonschema:"UUID of a ready image visible to the account"`
 	Name               string                     `json:"name" jsonschema:"lowercase letters, digits and dashes, max 63, unique within the account"`
 	ImageVersionID     string                     `json:"image_version_id,omitempty" jsonschema:"UUID of the image version to run, defaults to the image's current version"`
-	PlanID             string                     `json:"plan_id,omitempty" jsonschema:"UUID of a plan available at location_id, defaults to its first enabled plan"`
+	PlanID             string                     `json:"plan_id,omitempty" jsonschema:"UUID of a plan available at location_id. Its disk must hold the image (required_disk_gib on the image from user.microvm.image.get/list); a smaller plan is refused with reason plan_disk_too_small and nothing is created (an image of 2 GiB or less fits any plan). Defaults to the smallest enabled plan that holds the image"`
+	SecurityGroupIDs   []string                   `json:"security_group_ids,omitempty" jsonschema:"security groups owned by the account (at most 10) that apply to the whole sandbox, every network interface, and are in force before the sandbox can receive traffic. Without groups the sandbox is open on every port. Change them later with user.security_group.attach_sandboxes / detach_sandboxes; the groups are returned as security_groups on every read"`
 	SSHKeyIDs          []string                   `json:"ssh_key_ids,omitempty" jsonschema:"SSH keys owned by the account (C3), installed to /root/.ssh/authorized_keys and every non-system user's authorized_keys"`
 	Network            []MicrovmNetworkEntryInput `json:"network,omitempty" jsonschema:"one or more network interfaces: {kind: public} (a public IPv4 subnet is assigned automatically, C8.1), {kind: public, static_ip_id} (map an allocated static IP, C8.3), or {kind: vpc, vpc_subnet_id}. The first entry becomes eth0 and decides the default route. Omit entirely to use the account's stored default (user.microvm.settings.get); with no default set, the request is rejected"`
 	Ingress            map[string]any             `json:"ingress,omitempty" jsonschema:"{http: {enabled, port?, health_path?, extra_ports?}, shell: {enabled}} - shell requires an envd-capable image"`
@@ -69,15 +75,29 @@ type CreateMicrovmInput struct {
 	OnTimeout          string                     `json:"on_timeout,omitempty" jsonschema:"pause or kill when the lifetime/idle timeout elapses, default pause"`
 	IdleTimeoutSeconds int                        `json:"idle_timeout_seconds,omitempty" jsonschema:"seconds of inactivity before pausing; omit to never idle-pause"`
 	AlwaysOn           *bool                      `json:"always_on,omitempty" jsonschema:"disable lifetime/idle timeouts entirely"`
-	Env                string                     `json:"env,omitempty" jsonschema:"newline-separated KEY=value environment variables, stored encrypted and never returned"`
+	Env                map[string]string          `json:"env,omitempty" jsonschema:"environment variables the microVM starts with, as an object of variable name (uppercase letters, digits, underscores) to value; max 100 variables, each value up to 8192 characters, kept exactly as sent; stored encrypted and never returned"`
 	LifecycleHooks     map[string]any             `json:"lifecycle_hooks,omitempty" jsonschema:"hooks {port?, run|resume|suspend|terminate: {enabled, timeout, payload?}}"`
 	Domain             string                     `json:"domain,omitempty" jsonschema:"custom hostname to attach immediately after creation"`
 	Secure             *bool                      `json:"secure,omitempty" jsonschema:"gate envd access behind the microVM's access token"`
+	EgressPolicy       *MicrovmEgressPolicyInput  `json:"egress_policy,omitempty" jsonschema:"outbound network policy the sandbox starts with (same document as user.microvm.egress.set). It is in force from the first boot and the sandbox is placed only on a node that can enforce it. Omit for unrestricted outbound access"`
+	Metadata           map[string]string          `json:"metadata,omitempty" jsonschema:"customer metadata, string keys to string values: at most 32 keys, key 1-64 characters of letters digits _ . -, value at most 256 characters, keys starting with vc. are reserved"`
 }
 
 type SetMicrovmTimeoutInput struct {
 	ID      string `json:"id" jsonschema:"UUID of the microVM"`
-	Timeout int    `json:"timeout" jsonschema:"seconds from now until the on_timeout action fires, minimum 1"`
+	Timeout int    `json:"timeout,omitempty" jsonschema:"seconds from now until the on_timeout action fires, minimum 1, at most the platform maximum (28800 by default); give this OR no_limit"`
+	NoLimit bool   `json:"no_limit,omitempty" jsonschema:"true removes the deadline: the microVM then has no lifetime cap and is billed for as long as it runs; give this OR timeout"`
+}
+
+// SetMicrovmMetadataInput merge-patches the customer metadata: a string sets
+// the key, null removes it, keys not named are untouched.
+type SetMicrovmMetadataInput struct {
+	ID       string             `json:"id" jsonschema:"UUID of the microVM"`
+	Metadata map[string]*string `json:"metadata" jsonschema:"merge patch: key to string value, or null to remove the key; the same limits as create apply (at most 32 keys after the merge)"`
+}
+
+type MicrovmMetadataResult struct {
+	Metadata map[string]any `json:"metadata"`
 }
 
 type DeployMicrovmInput struct {
@@ -169,7 +189,7 @@ type MicrovmLogsResult struct {
 // ── handlers ────────────────────────────────────────────────────────────────
 
 func listMicrovms(ctx context.Context, cl *client.Client, in ListMicrovmsInput) (MicrovmListResult, error) {
-	items, err := cl.ListMicrovms(ctx, in.Search, in.State, in.ImageID, in.ConnectorID)
+	items, err := cl.ListMicrovmsByMetadata(ctx, in.Search, in.State, in.ImageID, in.ConnectorID, in.Metadata)
 	if err != nil {
 		return MicrovmListResult{}, err
 	}
@@ -239,6 +259,9 @@ func createMicrovm(ctx context.Context, cl *client.Client, in CreateMicrovmInput
 	if len(in.SSHKeyIDs) > 0 {
 		body["ssh_key_ids"] = in.SSHKeyIDs
 	}
+	if len(in.SecurityGroupIDs) > 0 {
+		body["security_group_ids"] = in.SecurityGroupIDs
+	}
 	if in.Network != nil {
 		network := make([]map[string]any, 0, len(in.Network))
 		for _, e := range in.Network {
@@ -261,7 +284,7 @@ func createMicrovm(ctx context.Context, cl *client.Client, in CreateMicrovmInput
 	if in.AlwaysOn != nil {
 		body["always_on"] = *in.AlwaysOn
 	}
-	if in.Env != "" {
+	if len(in.Env) > 0 {
 		body["env"] = in.Env
 	}
 	if in.LifecycleHooks != nil {
@@ -273,11 +296,97 @@ func createMicrovm(ctx context.Context, cl *client.Client, in CreateMicrovmInput
 	if in.Secure != nil {
 		body["secure"] = *in.Secure
 	}
-	microvm, err := cl.CreateMicrovm(ctx, body)
+	if in.EgressPolicy != nil {
+		body["egress_policy"] = egressPolicyBody(*in.EgressPolicy)
+	}
+	if len(in.Metadata) > 0 {
+		body["metadata"] = in.Metadata
+	}
+	// cl.CreateMicrovm sends a fresh Idempotency-Key per call (kept across the
+	// transport's own retries), so a retried create is replayed, not repeated. The env
+	// fallback's second create is a new call and so gets a new key.
+	microvm, envDeferred, err := createMicrovmWithEnvFallback(ctx, cl, body)
 	if err != nil {
 		return MicrovmResult{}, err
 	}
+	if len(in.Env) > 0 {
+		id, _ := microvm["id"].(string)
+		if envDeferred || !microvmEnvApplied(ctx, cl, id, in.Env) {
+			// An older Master refused the map (retried without env) or ignored it: set the
+			// variables through the env endpoint, the pre-3381 sequence.
+			if _, err := cl.SetMicrovmEnv(ctx, id, in.Env); err != nil {
+				return MicrovmResult{}, err
+			}
+		}
+	}
 	return MicrovmResult{Microvm: microvm}, nil
+}
+
+// createMicrovmWithEnvFallback creates the MicroVM with env in the body. A Master older than
+// the create-env fix validates env as a string, so an object map is refused with a 422 whose
+// errors name only env (and creates no row). In exactly that case the create is retried ONCE
+// without env and the caller sets the variables through PUT /microvm/vm/{id}/env. A 422 about
+// any other field, or a failure of the retry, is returned unchanged.
+//
+// If create ever carries an Idempotency-Key, the retry MUST use a new key: the first request
+// was refused and a replayed key could return that refusal again.
+func createMicrovmWithEnvFallback(ctx context.Context, cl *client.Client, body map[string]any) (map[string]any, bool, error) {
+	microvm, err := cl.CreateMicrovm(ctx, body)
+	if err == nil {
+		return microvm, false, nil
+	}
+	if _, hasEnv := body["env"]; !hasEnv || !isEnvOnlyValidationError(err) {
+		return nil, false, err
+	}
+	retry := make(map[string]any, len(body))
+	for k, v := range body {
+		if k != "env" {
+			retry[k] = v
+		}
+	}
+	microvm, err = cl.CreateMicrovm(ctx, retry)
+	if err != nil {
+		return nil, false, err
+	}
+	return microvm, true, nil
+}
+
+// isEnvOnlyValidationError is true for a 422 whose field errors name env (or env.*) and
+// nothing else.
+func isEnvOnlyValidationError(err error) bool {
+	var apiErr *client.APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnprocessableEntity || len(apiErr.FieldErrors) == 0 {
+		return false
+	}
+	for field := range apiErr.FieldErrors {
+		if field != "env" && !strings.HasPrefix(field, "env.") {
+			return false
+		}
+	}
+	return true
+}
+
+// microvmEnvApplied reports whether the SHOW envelope's env_keys name every configured
+// variable. A read failure counts as not applied so the PUT runs (it is idempotent).
+func microvmEnvApplied(ctx context.Context, cl *client.Client, id string, env map[string]string) bool {
+	details, err := cl.GetMicrovm(ctx, id)
+	if err != nil {
+		return false
+	}
+	have := map[string]bool{}
+	if arr, ok := details["env_keys"].([]any); ok {
+		for _, v := range arr {
+			if s, ok := v.(string); ok {
+				have[s] = true
+			}
+		}
+	}
+	for name := range env {
+		if !have[name] {
+			return false
+		}
+	}
+	return true
 }
 
 func pauseMicrovm(ctx context.Context, cl *client.Client, in GetMicrovmInput) (OKResult, error) {
@@ -316,10 +425,37 @@ func killMicrovm(ctx context.Context, cl *client.Client, in KillMicrovmInput) (O
 }
 
 func setMicrovmTimeout(ctx context.Context, cl *client.Client, in SetMicrovmTimeoutInput) (OKResult, error) {
+	switch {
+	case in.NoLimit && in.Timeout != 0:
+		return OKResult{}, fmt.Errorf("give timeout or no_limit, not both")
+	case in.NoLimit:
+		if err := cl.RemoveMicrovmTimeout(ctx, in.ID); err != nil {
+			return OKResult{}, err
+		}
+		return okResult("deadline removed"), nil
+	case in.Timeout < 1:
+		return OKResult{}, fmt.Errorf("timeout must be at least 1 second, or set no_limit to remove the deadline")
+	}
 	if err := cl.SetMicrovmTimeout(ctx, in.ID, in.Timeout); err != nil {
 		return OKResult{}, err
 	}
 	return okResult("timeout updated"), nil
+}
+
+func setMicrovmMetadata(ctx context.Context, cl *client.Client, in SetMicrovmMetadataInput) (MicrovmMetadataResult, error) {
+	patch := make(map[string]any, len(in.Metadata))
+	for k, v := range in.Metadata {
+		if v == nil {
+			patch[k] = nil
+		} else {
+			patch[k] = *v
+		}
+	}
+	stored, err := cl.UpdateMicrovmMetadata(ctx, in.ID, patch)
+	if err != nil {
+		return MicrovmMetadataResult{}, err
+	}
+	return MicrovmMetadataResult{Metadata: stored}, nil
 }
 
 func deployMicrovm(ctx context.Context, cl *client.Client, in DeployMicrovmInput) (MicrovmRunResult, error) {
@@ -382,14 +518,15 @@ func deleteMicrovm(ctx context.Context, cl *client.Client, in DeleteMicrovmInput
 
 func registerMicrovmTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.microvm.list", Description: "List the caller's microVMs, filterable by name, state, image and connector."}, listMicrovms)
-	Register(s, deps, Spec{Name: "user.microvm.get", Description: "Get a microVM by UUID, including its recent runs, image versions, domains and env key names (values are never returned)."}, getMicrovm)
-	Register(s, deps, Spec{Name: "user.microvm.create", Description: "Create a microVM from a ready image: pick a location, plan, SSH keys, network, lifetime and hooks."}, createMicrovm)
+	Register(s, deps, Spec{Name: "user.microvm.get", Description: "Get a microVM by UUID, including its recent runs, image versions, domains and env key names (values are never returned). Read-only resume fields on the microvm: last_resume_mode is snapshot (memory kept) or fresh_boot (restarted from disk, in-memory state not kept), last_resume_reason is a short machine reason for a fresh boot, last_resumed_at is when; all null until the first resume. Each run also carries resume_mode, resume_reason and resumed_at."}, getMicrovm)
+	Register(s, deps, Spec{Name: "user.microvm.create", Description: "Create a microVM from a ready image: pick a location, plan, SSH keys, network, lifetime and hooks, and optionally an outbound network policy (egress_policy) it starts with. A plan whose disk is smaller than the image needs (required_disk_gib) is refused with reason plan_disk_too_small; omit plan_id to get the smallest plan that fits."}, createMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.pause", Description: "Pause a running microVM (snapshots it on the node, not billed while paused)."}, pauseMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.resume", Description: "Resume a paused microVM."}, resumeMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.stop", Description: "Gracefully stop a microVM. Its hostname and DNS record are kept."}, stopMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.start", Description: "Boot a stopped microVM again."}, startMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.kill", Description: "Forcibly kill the microVM's current run immediately. The row survives; delete removes it. DESTRUCTIVE: requires \"confirm\": true.", Destructive: true}, killMicrovm)
-	Register(s, deps, Spec{Name: "user.microvm.set_timeout", Description: "Overwrite the microVM's auto-pause/kill TTL (used by SDKs to extend a sandbox's life)."}, setMicrovmTimeout)
+	Register(s, deps, Spec{Name: "user.microvm.set_timeout", Description: "Overwrite the microVM's auto-pause/kill TTL (used by SDKs to extend a sandbox's life), or pass no_limit to remove the deadline entirely."}, setMicrovmTimeout)
+	Register(s, deps, Spec{Name: "user.microvm.set_metadata", Description: "Merge-patch the microVM's customer metadata (string keys to string values; null removes a key). Returns the full stored map."}, setMicrovmMetadata)
 	Register(s, deps, Spec{Name: "user.microvm.deploy", Description: "Redeploy the microVM onto a specific version of its current image (health-gated before ingress switches)."}, deployMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.rollback", Description: "Roll the microVM back to a previous version of its current image."}, rollbackMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.set_env", Description: "Replace the microVM's environment variables wholesale. Returns only the merged key names, never values."}, setMicrovmEnv)

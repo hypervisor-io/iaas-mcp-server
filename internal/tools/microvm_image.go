@@ -202,8 +202,8 @@ func deleteMicrovmImage(ctx context.Context, cl *client.Client, in DeleteMicrovm
 }
 
 func registerMicrovmImageTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "user.microvm.image.list", Description: "List the microVM images visible to the caller (platform bases plus own builds), filterable by name, source kind and build status. Each image carries its os {family, name, version, codename, arch} and features {sshd, envd, vcagent} when set."}, listMicrovmImages)
-	Register(s, deps, Spec{Name: "user.microvm.image.get", Description: "Get an image by UUID, including its versions, how many microVMs run it, and its os/features metadata."}, getMicrovmImage)
+	Register(s, deps, Spec{Name: "user.microvm.image.list", Description: "List the microVM images visible to the caller (platform bases plus own builds), filterable by name, source kind and build status. Each image carries its os {family, name, version, codename, arch} and features {sshd, envd, vcagent} when set, and required_disk_gib (the disk its image needs in GiB, null when unknown) which a plan must meet."}, listMicrovmImages)
+	Register(s, deps, Spec{Name: "user.microvm.image.get", Description: "Get an image by UUID, including its versions (each with its own required_disk_gib), how many microVMs run it, its os/features metadata and required_disk_gib."}, getMicrovmImage)
 	Register(s, deps, Spec{Name: "user.microvm.image.create", Description: "Create a custom image built on top of a catalog base (C6) from a Dockerfile, container image or git repository, and dispatch its first build."}, createMicrovmImage)
 	Register(s, deps, Spec{Name: "user.microvm.image.build", Description: "Build a new version of an image from the same source, on a builder node in location_id."}, buildMicrovmImage)
 	Register(s, deps, Spec{Name: "user.microvm.image.delete", Description: "Delete an image and every version. Refused with 409 while a microVM still references it. DESTRUCTIVE: requires \"confirm\": true.", Destructive: true}, deleteMicrovmImage)

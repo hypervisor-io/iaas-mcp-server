@@ -140,3 +140,63 @@ func TestSecurityGroup_ErrorMapping(t *testing.T) {
 		t.Errorf("get missing: want not found, got %q", resultText(t, res))
 	}
 }
+
+// SBX-SG-ATTACH: attach / detach a security group to sandboxes, the typed
+// refusals the API answers, and the create tool's real security_group_ids.
+func TestSecurityGroup_AttachDetachSandboxes(t *testing.T) {
+	var gotPaths []string
+	var gotBodies []map[string]any
+	mux := http.NewServeMux()
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotPaths = append(gotPaths, r.Method+" "+r.URL.Path)
+		gotBodies = append(gotBodies, body)
+		if ids, _ := body["sandbox_ids"].([]any); len(ids) == 1 && ids[0] == "killed" {
+			writeJSON(w, http.StatusConflict, map[string]any{"success": false, "reason": "sandbox_killed", "message": "A killed sandbox cannot carry security groups."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "ok", "sandbox_ids": body["sandbox_ids"]})
+	}
+	mux.HandleFunc("POST /security-group/{id}/attach-sandboxes", handler)
+	mux.HandleFunc("POST /security-group/{id}/detach-sandboxes", handler)
+	mux.HandleFunc("GET /security-group/{id}", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success":            true,
+			"security_group":     map[string]any{"id": r.PathValue("id"), "name": "web"},
+			"attached_sandboxes": []any{map[string]any{"id": "vm-1", "name": "worker", "state": "running"}},
+		})
+	})
+	cs := connectSession(t, mux)
+
+	var ok tools.OKResult
+	res := callTool(t, cs, "user.security_group.attach_sandboxes", map[string]any{"security_group_id": "sg-1", "sandbox_ids": []any{"vm-1", "vm-2"}})
+	unmarshalResult(t, res, &ok)
+	if !ok.OK {
+		t.Fatalf("attach_sandboxes ok = false: %s", resultText(t, res))
+	}
+	res = callTool(t, cs, "user.security_group.detach_sandboxes", map[string]any{"security_group_id": "sg-1", "sandbox_ids": []any{"vm-1"}})
+	unmarshalResult(t, res, &ok)
+	if !ok.OK {
+		t.Fatalf("detach_sandboxes ok = false: %s", resultText(t, res))
+	}
+	if len(gotPaths) != 2 || gotPaths[0] != "POST /security-group/sg-1/attach-sandboxes" || gotPaths[1] != "POST /security-group/sg-1/detach-sandboxes" {
+		t.Fatalf("paths = %v", gotPaths)
+	}
+	if ids, _ := gotBodies[0]["sandbox_ids"].([]any); len(ids) != 2 || ids[1] != "vm-2" {
+		t.Errorf("attach body = %v", gotBodies[0])
+	}
+
+	res = callTool(t, cs, "user.security_group.attach_sandboxes", map[string]any{"security_group_id": "sg-1", "sandbox_ids": []any{"killed"}})
+	if !res.IsError || !strings.Contains(resultText(t, res), "killed sandbox") {
+		t.Errorf("killed sandbox: want the typed refusal text, got %q", resultText(t, res))
+	}
+
+	// The group read lists the sandboxes it is attached to.
+	res = callTool(t, cs, "user.security_group.get", map[string]any{"id": "sg-1"})
+	var got tools.SecurityGroupResult
+	unmarshalResult(t, res, &got)
+	if len(got.AttachedSandboxes) != 1 || got.AttachedSandboxes[0]["id"] != "vm-1" {
+		t.Errorf("get attached_sandboxes = %v", got.AttachedSandboxes)
+	}
+}

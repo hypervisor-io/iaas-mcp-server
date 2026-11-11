@@ -190,6 +190,8 @@ func TestMicrovmImage_KitMetadataPassesThrough(t *testing.T) {
 		"default_plan_vcpu": float64(2), "default_lifetime_seconds": float64(3600),
 		"suggested_secrets": []any{map[string]any{"name": "ANTHROPIC_API_KEY", "provider": "anthropic", "label": "Anthropic API key", "placeholder": "your Anthropic API key", "icon": "anthropic", "role": "provider", "help_url": "https://console.anthropic.com/settings/keys"}},
 		"sort_order":        float64(10),
+		// SBX-PLAN-FITS-KIT: the disk the image needs; a plan must meet it.
+		"required_disk_gib": float64(4),
 	}
 	withKit := func(m map[string]any) map[string]any {
 		for k, v := range kit {
@@ -213,6 +215,9 @@ func TestMicrovmImage_KitMetadataPassesThrough(t *testing.T) {
 			if _, ok := img[k]; !ok {
 				t.Errorf("%s dropped kit key %q", where, k)
 			}
+		}
+		if img["required_disk_gib"] != float64(4) {
+			t.Errorf("%s required_disk_gib = %v; want 4", where, img["required_disk_gib"])
 		}
 		if img["category"] != "agent" || img["sort_order"] != float64(10) || img["default_lifetime_seconds"] != float64(3600) || img["default_plan_vcpu"] != float64(2) || img["icon"] != "claude" || img["tagline"] != "Coding agent" {
 			t.Errorf("%s kit scalars = %v", where, img)
