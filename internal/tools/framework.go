@@ -26,6 +26,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"sync/atomic"
 
@@ -48,6 +49,14 @@ type Deps struct {
 	// internal/tools/microvm_settings.go. Every other tool ignores this
 	// field entirely.
 	RawAPI iaasauth.RawAPISource
+
+	// NodeHTTPClient is the HTTP client the sandbox run API tools use to call a sandbox's NODE after minting a token
+	// (internal/tools/runapi_node.go). Nil = a plain client that never follows a redirect. Tests inject one.
+	NodeHTTPClient *http.Client
+
+	// AllowInsecureNodeURL lets those tools call an http:// node address. It exists for tests against a local
+	// server; production leaves it false and the tools refuse any address that is not https.
+	AllowInsecureNodeURL bool
 }
 
 // Spec is the static description of a tool: its wire name, its human/agent

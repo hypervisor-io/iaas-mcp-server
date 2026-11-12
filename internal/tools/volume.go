@@ -66,11 +66,14 @@ func init() {
 // ── volume inputs / outputs ─────────────────────────────────────────────────
 
 type CreateVolumeInput struct {
-	Name              string `json:"name" jsonschema:"volume name"`
-	VolumePlanID      string `json:"volume_plan_id" jsonschema:"UUID of the volume plan (size/type)"`
-	LocationID        string `json:"location_id,omitempty" jsonschema:"UUID of the location (hypervisor group)"`
-	HypervisorGroupID string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
-	ProjectID         string `json:"project_id,omitempty" jsonschema:"optional project UUID"`
+	Name                  string `json:"name" jsonschema:"volume name"`
+	VolumePlanID          string `json:"volume_plan_id,omitempty" jsonschema:"UUID of the volume plan (size/type). Required for a KVM block volume; not used with for sandbox"`
+	For                   string `json:"for,omitempty" jsonschema:"instance (default): a KVM block volume from a volume plan. sandbox: a persistent data volume for sandboxes (attach it with user.microvm.create volumes or user.microvm.volume_attach); it needs size_gib and keeps its data when a sandbox stops, pauses or is deleted"`
+	SizeGib               int    `json:"size_gib,omitempty" jsonschema:"with for sandbox: size in GiB, 1-1024"`
+	DeleteOnSandboxDelete *bool  `json:"delete_on_sandbox_delete,omitempty" jsonschema:"with for sandbox: delete the volume when the sandbox that holds it is deleted (default keeps it)"`
+	LocationID            string `json:"location_id,omitempty" jsonschema:"UUID of the location (hypervisor group)"`
+	HypervisorGroupID     string `json:"hypervisor_group_id,omitempty" jsonschema:"deprecated alias for location_id"`
+	ProjectID             string `json:"project_id,omitempty" jsonschema:"optional project UUID"`
 }
 
 type GetVolumeInput struct {
@@ -132,6 +135,12 @@ type SnapshotResult struct {
 // ── volume handlers ─────────────────────────────────────────────────────────
 
 func createVolume(ctx context.Context, cl *client.Client, in CreateVolumeInput) (VolumeResult, error) {
+	if in.For == "sandbox" {
+		return createSandboxVolume(ctx, cl, in)
+	}
+	if in.VolumePlanID == "" {
+		return VolumeResult{}, fmt.Errorf("volume_plan_id is required for a KVM block volume (or set for to sandbox with size_gib)")
+	}
 	body := map[string]any{
 		"name":           in.Name,
 		"volume_plan_id": in.VolumePlanID,
@@ -326,7 +335,7 @@ const volumeOpNote = " A node failure (the volume keeps its previous state) or a
 func registerVolumeTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{
 		Name:        "user.volume.create",
-		Description: "Create a block volume and wait until it is available." + locationIDAliasNote,
+		Description: "Create a block volume and wait until it is available. With for \"sandbox\" (and size_gib instead of volume_plan_id) it creates a persistent data volume for sandboxes instead: a disk of size_gib GiB on one node of the location that keeps its data when a sandbox stops, pauses or is deleted (unless delete_on_sandbox_delete), billed per GiB-hour of the location. Attach it with user.microvm.create volumes or, while the sandbox is stopped, user.microvm.volume_attach. Refused with a typed reason: no_sandbox_capacity, node_volumes_unsupported, volume_limit, volume_size_invalid, volume_node_unavailable." + locationIDAliasNote,
 	}, createVolume)
 	Register(s, deps, Spec{Name: "user.volume.list", Description: "List all volumes owned by the caller."}, listVolumes)
 	Register(s, deps, Spec{
@@ -372,4 +381,29 @@ func registerVolumeTools(s *mcp.Server, deps Deps) {
 		Description: "Delete a volume snapshot and wait until removed. DESTRUCTIVE: requires \"confirm\": true.",
 		Destructive: true,
 	}, deleteVolumeSnapshot)
+}
+
+// createSandboxVolume creates a persistent data volume for sandboxes (POST /storage/volumes with for sandbox). The
+// location creates the file before answering, so the volume is available when the call returns; one attempt only.
+func createSandboxVolume(ctx context.Context, cl *client.Client, in CreateVolumeInput) (VolumeResult, error) {
+	if in.SizeGib < 1 {
+		return VolumeResult{}, fmt.Errorf("size_gib is required for a sandbox volume (1-1024)")
+	}
+	body := map[string]any{
+		"for":         "sandbox",
+		"name":        in.Name,
+		"size_gib":    in.SizeGib,
+		"location_id": resolveLocationID(in.LocationID, in.HypervisorGroupID),
+	}
+	if in.ProjectID != "" {
+		body["project_id"] = in.ProjectID
+	}
+	if in.DeleteOnSandboxDelete != nil {
+		body["delete_on_sandbox_delete"] = *in.DeleteOnSandboxDelete
+	}
+	vol, err := cl.CreateSandboxVolume(ctx, body)
+	if err != nil {
+		return VolumeResult{}, err
+	}
+	return VolumeResult{Volume: vol}, nil
 }

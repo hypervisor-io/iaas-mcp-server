@@ -58,17 +58,30 @@ type MicrovmNetworkEntryInput struct {
 	RateMbit         int      `json:"rate_mbit,omitempty" jsonschema:"per-NIC rate limit in Mbit/s"`
 }
 
+// MicrovmVolumeInput is one entry of a Create MicroVM `volumes[]` array: a persistent data volume the sandbox starts with.
+type MicrovmVolumeInput struct {
+	VolumeID              string `json:"volume_id" jsonschema:"UUID of a free sandbox volume (user.volume.create with for sandbox) in location_id"`
+	MountPath             string `json:"mount_path,omitempty" jsonschema:"absolute path where the guest mounts it: letters, digits and . _ + - /, not inside a system directory. Default /mnt/<volume name>"`
+	ReadOnly              *bool  `json:"read_only,omitempty" jsonschema:"mount read-only"`
+	Noexec                *bool  `json:"noexec,omitempty" jsonschema:"mount with noexec"`
+	DeleteOnSandboxDelete *bool  `json:"delete_on_sandbox_delete,omitempty" jsonschema:"delete the volume when the sandbox is deleted (default keeps it with its data)"`
+}
+
 // CreateMicrovmInput carries the Create MicroVM body. "ingress" and
 // "lifecycle_hooks" are passed through verbatim; unset optional fields are
 // omitted so the API applies its own defaults.
 type CreateMicrovmInput struct {
-	LocationID         string                     `json:"location_id" jsonschema:"UUID of the location to deploy into"`
-	ImageID            string                     `json:"image_id" jsonschema:"UUID of a ready image visible to the account"`
+	LocationID         string                     `json:"location_id,omitempty" jsonschema:"UUID of the location to deploy into. Required unless snapshot_id is given (a snapshot fixes the location)"`
+	ImageID            string                     `json:"image_id,omitempty" jsonschema:"UUID of a ready image visible to the account. Required unless snapshot_id is given; the two exclude each other"`
+	SnapshotID         string                     `json:"snapshot_id,omitempty" jsonschema:"UUID of a ready sandbox disk snapshot (user.microvm.snapshot_list) to start the sandbox from instead of an image: it boots cold from a copy of the saved disk, in the snapshot's location and on the node that holds it. plan_id must hold the snapshot's root filesystem by the node's rule: any plan when that filesystem is 2 GiB or less, otherwise a plan disk of at least its size in whole GiB (disk_gib is the source's plan, not the test). Environment variables, secrets and the outbound policy are not inherited: set env and egress_policy here, or inherit_env"`
+	InheritEnv         *bool                      `json:"inherit_env,omitempty" jsonschema:"with snapshot_id: also start with the source sandbox's current environment variables (env wins on a clash); fails if the source no longer exists"`
+	FastStart          string                     `json:"fast_start,omitempty" jsonschema:"how the sandbox should start: allow (default) takes the fastest start the location offers and otherwise starts normally; cold_only always starts normally; require never starts normally and fails with HTTP 429 reason fast_start_unavailable (a cause such as pool_empty, snapshot_building, restore_saturated, node_kvm_fault, fast_start_unavailable or fast_start_unsupported, and a Retry-After when a retry is likely to help). Nothing is created on a 429, so the same call can be repeated. require is refused at once (cause fast_start_unsupported) for a snapshot fork, MCP servers, more than one network interface, a sandbox without shell ingress, or a location without fast start"`
 	Name               string                     `json:"name" jsonschema:"lowercase letters, digits and dashes, max 63, unique within the account"`
 	ImageVersionID     string                     `json:"image_version_id,omitempty" jsonschema:"UUID of the image version to run, defaults to the image's current version"`
 	PlanID             string                     `json:"plan_id,omitempty" jsonschema:"UUID of a plan available at location_id. Its disk must hold the image (required_disk_gib on the image from user.microvm.image.get/list); a smaller plan is refused with reason plan_disk_too_small and nothing is created (an image of 2 GiB or less fits any plan). Defaults to the smallest enabled plan that holds the image"`
 	SecurityGroupIDs   []string                   `json:"security_group_ids,omitempty" jsonschema:"security groups owned by the account (at most 10) that apply to the whole sandbox, every network interface, and are in force before the sandbox can receive traffic. Without groups the sandbox is open on every port. Change them later with user.security_group.attach_sandboxes / detach_sandboxes; the groups are returned as security_groups on every read"`
 	SSHKeyIDs          []string                   `json:"ssh_key_ids,omitempty" jsonschema:"SSH keys owned by the account (C3), installed to /root/.ssh/authorized_keys and every non-system user's authorized_keys"`
+	Volumes            []MicrovmVolumeInput       `json:"volumes,omitempty" jsonschema:"persistent data volumes (at most 4) the sandbox starts with, all free, in location_id and on ONE node: the sandbox is placed on that node and never elsewhere. They keep their data when the sandbox stops, pauses or is deleted. Snapshots of the sandbox do not contain them. Refused with a typed reason: volume_not_found, volume_in_use, volume_node_mismatch, volume_node_unavailable, volume_slots_exhausted, mount_path_conflict, mount_path_invalid"`
 	Network            []MicrovmNetworkEntryInput `json:"network,omitempty" jsonschema:"one or more network interfaces: {kind: public} (a public IPv4 subnet is assigned automatically, C8.1), {kind: public, static_ip_id} (map an allocated static IP, C8.3), or {kind: vpc, vpc_subnet_id}. The first entry becomes eth0 and decides the default route. Omit entirely to use the account's stored default (user.microvm.settings.get); with no default set, the request is rejected"`
 	Ingress            map[string]any             `json:"ingress,omitempty" jsonschema:"{http: {enabled, port?, health_path?, extra_ports?}, shell: {enabled}} - shell requires an envd-capable image"`
 	MaxLifetimeSeconds int                        `json:"max_lifetime_seconds,omitempty" jsonschema:"hard lifetime cap in seconds, from the last start"`
@@ -245,10 +258,21 @@ func networkEntryBody(e MicrovmNetworkEntryInput) map[string]any {
 // account's stored network default when network is omitted, on_timeout
 // pause, no lifetime cap beyond the platform default).
 func createMicrovm(ctx context.Context, cl *client.Client, in CreateMicrovmInput) (MicrovmResult, error) {
-	body := map[string]any{
-		"location_id": in.LocationID,
-		"image_id":    in.ImageID,
-		"name":        in.Name,
+	body := map[string]any{"name": in.Name}
+	if in.LocationID != "" {
+		body["location_id"] = in.LocationID
+	}
+	if in.ImageID != "" {
+		body["image_id"] = in.ImageID
+	}
+	if in.SnapshotID != "" {
+		body["snapshot_id"] = in.SnapshotID
+	}
+	if in.InheritEnv != nil {
+		body["inherit_env"] = *in.InheritEnv
+	}
+	if in.FastStart != "" {
+		body["fast_start"] = in.FastStart
 	}
 	if in.ImageVersionID != "" {
 		body["image_version_id"] = in.ImageVersionID
@@ -261,6 +285,26 @@ func createMicrovm(ctx context.Context, cl *client.Client, in CreateMicrovmInput
 	}
 	if len(in.SecurityGroupIDs) > 0 {
 		body["security_group_ids"] = in.SecurityGroupIDs
+	}
+	if len(in.Volumes) > 0 {
+		volumes := make([]map[string]any, 0, len(in.Volumes))
+		for _, v := range in.Volumes {
+			item := map[string]any{"volume_id": v.VolumeID}
+			if v.MountPath != "" {
+				item["mount_path"] = v.MountPath
+			}
+			if v.ReadOnly != nil {
+				item["read_only"] = *v.ReadOnly
+			}
+			if v.Noexec != nil {
+				item["noexec"] = *v.Noexec
+			}
+			if v.DeleteOnSandboxDelete != nil {
+				item["delete_on_sandbox_delete"] = *v.DeleteOnSandboxDelete
+			}
+			volumes = append(volumes, item)
+		}
+		body["volumes"] = volumes
 	}
 	if in.Network != nil {
 		network := make([]map[string]any, 0, len(in.Network))
@@ -519,7 +563,7 @@ func deleteMicrovm(ctx context.Context, cl *client.Client, in DeleteMicrovmInput
 func registerMicrovmTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{Name: "user.microvm.list", Description: "List the caller's microVMs, filterable by name, state, image and connector."}, listMicrovms)
 	Register(s, deps, Spec{Name: "user.microvm.get", Description: "Get a microVM by UUID, including its recent runs, image versions, domains and env key names (values are never returned). Read-only resume fields on the microvm: last_resume_mode is snapshot (memory kept) or fresh_boot (restarted from disk, in-memory state not kept), last_resume_reason is a short machine reason for a fresh boot, last_resumed_at is when; all null until the first resume. Each run also carries resume_mode, resume_reason and resumed_at."}, getMicrovm)
-	Register(s, deps, Spec{Name: "user.microvm.create", Description: "Create a microVM from a ready image: pick a location, plan, SSH keys, network, lifetime and hooks, and optionally an outbound network policy (egress_policy) it starts with. A plan whose disk is smaller than the image needs (required_disk_gib) is refused with reason plan_disk_too_small; omit plan_id to get the smallest plan that fits."}, createMicrovm)
+	Register(s, deps, Spec{Name: "user.microvm.create", Description: "Create a microVM from a ready image, or from a sandbox disk snapshot (snapshot_id, see user.microvm.snapshot_create): pick a location (not needed with a snapshot), plan, SSH keys, network, lifetime and hooks, optionally an outbound network policy (egress_policy) and persistent data volumes (volumes, see user.volume.create with for sandbox) it starts with. A plan whose disk is smaller than the image needs (required_disk_gib) is refused with reason plan_disk_too_small; omit plan_id to get the smallest plan that fits."}, createMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.pause", Description: "Pause a running microVM (snapshots it on the node, not billed while paused)."}, pauseMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.resume", Description: "Resume a paused microVM."}, resumeMicrovm)
 	Register(s, deps, Spec{Name: "user.microvm.stop", Description: "Gracefully stop a microVM. Its hostname and DNS record are kept."}, stopMicrovm)
