@@ -219,6 +219,13 @@ func MapError(err error) error {
 		return fmt.Errorf("not found: %w", err)
 	case 401, 403:
 		return fmt.Errorf("access denied: %w", err)
+	case 409:
+		// A create aimed at a VPC that is being deleted is a permanent refusal
+		// for that VPC: nothing was created and a retry gets the same answer.
+		if apiErr.Reason == client.ReasonVpcDeleting {
+			return fmt.Errorf("refused (vpc_deleting): the target VPC is being deleted, so nothing was created and retrying will not help; use another VPC: %w", err)
+		}
+		return err
 	case 422:
 		return fmt.Errorf("validation failed: %w", err)
 	case 429:

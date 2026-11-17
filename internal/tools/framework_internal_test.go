@@ -26,6 +26,8 @@ func TestMapError_ByStatus(t *testing.T) {
 		{"422", &client.APIError{Status: 422, Message: "bad"}, "validation failed:"},
 		{"429", &client.APIError{Status: 429, Message: "slow down"}, "rate limited (retryable):"},
 		{"429 with Retry-After", &client.APIError{Status: 429, Reason: "volume_cooldown", Message: "Volume is in cooldown.", RetryAfter: 42 * time.Second}, "rate limited (retryable, retry after 42s):"},
+		{"409 vpc_deleting", &client.APIError{Status: 409, Reason: "vpc_deleting", Message: "The VPC is being deleted."}, "refused (vpc_deleting):"},
+		{"409 other reason passthrough", &client.APIError{Status: 409, Reason: "something_else", Message: "busy"}, ""},
 		{"500 passthrough", &client.APIError{Status: 500, Message: "boom"}, ""},
 		{"non-api passthrough", errors.New("dial tcp: refused"), ""},
 	}
