@@ -100,8 +100,27 @@ func NewTokenSource(cfg Config) TokenSource {
 		if err != nil {
 			return nil, err
 		}
-		return client.New(cfg.APIEndpoint, token, cfg.RequestTimeout, cfg.Insecure), nil
+		return NewClient(cfg.APIEndpoint, token, cfg.RequestTimeout, cfg.Insecure), nil
 	}
+}
+
+// Busy-refusal budget of every client the server builds. The panel answers
+// HTTP 409 address_reservation_busy or database_busy (Retry-After: 1) when
+// another request is in progress and nothing was changed; the shared client
+// then repeats the call. A tool call is interactive, so the budget is short:
+// three tries and about six seconds of waiting in all. After that the tool
+// returns the panel's message with a hint that repeating the call is safe
+// (see tools.MapError); it never loops silently for long.
+const (
+	busyAttempts = 3
+	busyPerWait  = 3 * time.Second
+	busyTotal    = 6 * time.Second
+)
+
+// NewClient builds the API client for one request with the server's short
+// busy-refusal budget.
+func NewClient(endpoint, token string, timeout time.Duration, insecure bool) *client.Client {
+	return client.New(endpoint, token, timeout, insecure).WithBusyRetry(busyAttempts, busyPerWait, busyTotal)
 }
 
 // tokenFromContext recovers the raw bearer token Verifier stashed on ctx, or

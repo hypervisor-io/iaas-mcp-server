@@ -132,6 +132,21 @@ Database operation admission: `user.managed_database.backup` supports full (defa
   `deployed`; `user.kubernetes_cluster.create` waits until `running`).
 - **Error mapping.** Platform `401/403` becomes a scope/IP-lock hint, `422` surfaces
   field errors, `404` becomes not-found, `429` is surfaced as retryable.
+- **Busy answers.** When the platform answers HTTP `409` with reason
+  `address_reservation_busy` or `database_busy` ("another request is in progress"; a
+  `Retry-After` header names the wait), the server repeats the call up to two more times,
+  honouring `Retry-After` (about six seconds in all). The platform guarantees nothing was
+  created, changed or deleted on such an answer. If it is still busy, the tool returns the
+  platform's message with a hint that repeating the same call is safe. No other `409` is
+  repeated. A `500` with reason `database_error` is returned with the platform's fixed
+  sentence and a hint to try again later.
+- **Failed tasks.** The task tools return `message` and `failure_reason` as the platform
+  sends them. `failure_reason` is one of a closed list (`detach_not_confirmed`,
+  `disk_target_in_use`, `no_space`, `device_busy`, `permission_denied`, `operation_timeout`,
+  `instance_not_running`, `instance_not_found`, `resource_missing`, `node_unavailable`,
+  `download_failed`, `node_worker_stopped`, `node_task_failed`) or null.
+  `detach_not_confirmed` means the disk or volume is still attached. Volume attach and
+  detach errors, and instance deploy waits, include the failed task's message and reason.
 
 ### Curated admin allowlist
 

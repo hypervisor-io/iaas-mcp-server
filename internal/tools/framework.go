@@ -225,9 +225,26 @@ func MapError(err error) error {
 		if apiErr.Reason == client.ReasonVpcDeleting {
 			return fmt.Errorf("refused (vpc_deleting): the target VPC is being deleted, so nothing was created and retrying will not help; use another VPC: %w", err)
 		}
+		// Another request was in progress (typed, WITH Retry-After: the managed
+		// database backup and restore admission also answers 409 database_busy,
+		// without that header, and that one is a real conflict that lasts until
+		// the other operation ends, so it gets no hint). The shared
+		// client already repeated the call a few times within a short budget;
+		// the panel guarantees nothing was created, changed or deleted, so the
+		// caller may simply repeat the same call.
+		if apiErr.RetryAfter > 0 && (apiErr.Reason == client.ReasonAddressReservationBusy || apiErr.Reason == client.ReasonDatabaseBusy) {
+			return fmt.Errorf("busy (%s): another request was in progress and the call was retried a few times; nothing was created, changed or deleted, so it is safe to repeat the same call: %w", apiErr.Reason, err)
+		}
 		return err
 	case 422:
 		return fmt.Errorf("validation failed: %w", err)
+	case 500:
+		// A database failure never carries SQL text: a fixed sentence and the
+		// typed reason. The cause is on the panel side, not in the request.
+		if apiErr.Reason == client.ReasonDatabaseError {
+			return fmt.Errorf("panel database error (database_error): not caused by the request; try again later, and report it to the platform administrator if it persists: %w", err)
+		}
+		return err
 	case 429:
 		// Idempotent requests were already retried by the shared client; a
 		// single-attempt command (volume mutations, snapshot and backup

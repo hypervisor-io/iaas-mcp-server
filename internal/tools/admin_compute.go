@@ -47,11 +47,11 @@ func registerAdminComputeTools(s *mcp.Server, deps Deps) {
 		})
 
 	// Tasks.
-	Register(s, deps, Spec{Name: "admin.task.list", Description: "List platform tasks (admin).", Admin: true},
+	Register(s, deps, Spec{Name: "admin.task.list", Description: "List platform tasks (admin)." + failureNote, Admin: true},
 		func(ctx context.Context, cl *client.Client, _ EmptyInput) (AdminListResult, error) {
 			return adminList(cl.AdminListTasks(ctx))
 		})
-	Register(s, deps, Spec{Name: "admin.task.get", Description: "Get a task by UUID (admin).", Admin: true},
+	Register(s, deps, Spec{Name: "admin.task.get", Description: "Get a task by UUID (admin)." + failureNote, Admin: true},
 		func(ctx context.Context, cl *client.Client, in AdminIDInput) (AdminItemResult, error) {
 			return adminItem(cl.AdminGetTask(ctx, in.ID))
 		})

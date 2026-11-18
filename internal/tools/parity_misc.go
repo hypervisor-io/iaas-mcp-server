@@ -173,7 +173,7 @@ func registerParityMiscTools(s *mcp.Server, deps Deps) {
 		Destructive: true,
 	}, deleteDnsRecordHealthCheck)
 	Register(s, deps, Spec{Name: "user.dns_record.toggle", Description: "Toggle a DNS record's enabled state."}, toggleDnsRecord)
-	Register(s, deps, Spec{Name: "user.task.list", Description: "List platform tasks owned by the caller."}, listTasks)
+	Register(s, deps, Spec{Name: "user.task.list", Description: "List platform tasks owned by the caller." + failureNote}, listTasks)
 	Register(s, deps, Spec{
 		Name:        "user.task.delete",
 		Description: "Delete a task record (does not cancel the underlying operation). DESTRUCTIVE: requires \"confirm\": true.",

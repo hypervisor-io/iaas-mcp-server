@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -16,6 +17,16 @@ import (
 
 func init() {
 	toolRegistrars = append(toolRegistrars, registerAdminOpsTools)
+}
+
+// failureNote is appended to the descriptions of the task read tools. The tools
+// return the task rows as the panel sends them, so message and failure_reason
+// need no output-schema change; the text tells the model how to read them.
+const failureNote = " A failed task carries a short plain message and a typed failure_reason (null when none): detach_not_confirmed (the disk or volume is STILL attached; shut the instance down and detach again), disk_target_in_use, no_space, device_busy, permission_denied, operation_timeout, instance_not_running, instance_not_found, resource_missing, node_unavailable, download_failed, node_worker_stopped, node_task_failed. Both are passed through unchanged."
+
+// EmailLogInput is the input of admin.system.email_log.
+type EmailLogInput struct {
+	Status string `json:"status,omitempty" jsonschema:"optional delivery status filter: failed or sent (omit for every row)"`
 }
 
 // AdminRdnsProcessInput approves or rejects a pending reverse-DNS request. This
@@ -82,9 +93,13 @@ func registerAdminOpsTools(s *mcp.Server, deps Deps) {
 		func(ctx context.Context, cl *client.Client, _ EmptyInput) (AdminListResult, error) {
 			return adminList(cl.AdminGetAdminLogs(ctx))
 		})
-	Register(s, deps, Spec{Name: "admin.system.email_log", Description: "List the outgoing email log (admin).", Admin: true},
-		func(ctx context.Context, cl *client.Client, _ EmptyInput) (AdminListResult, error) {
-			return adminList(cl.AdminGetEmailLog(ctx))
+	Register(s, deps, Spec{Name: "admin.system.email_log", Description: "List the outgoing email log (admin). Optional status filter: failed or sent. Every row carries status (sent for rows written before the field existed) and error (null for sent rows, a cleaned one-line transport error for failed rows); mailer is the mailer name only. A failed row has an empty html_body and user_id may be empty or null (the recipient is not a panel user). Fetches all pages: filter by status to keep the answer small.", Admin: true},
+		func(ctx context.Context, cl *client.Client, in EmailLogInput) (AdminListResult, error) {
+			status := strings.TrimSpace(in.Status)
+			if status != "" && status != "failed" && status != "sent" {
+				return AdminListResult{}, fmt.Errorf("status must be \"failed\" or \"sent\", got %q", in.Status)
+			}
+			return adminList(cl.AdminGetEmailLogByStatus(ctx, status))
 		})
 	Register(s, deps, Spec{Name: "admin.system.ip_log", Description: "List the IP audit log (admin).", Admin: true},
 		func(ctx context.Context, cl *client.Client, _ EmptyInput) (AdminListResult, error) {
