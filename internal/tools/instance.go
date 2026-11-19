@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -150,13 +151,20 @@ func listInstances(ctx context.Context, cl *client.Client, _ ListInstancesInput)
 	return InstanceListResult{Instances: items, Count: len(items)}, nil
 }
 
-// deleteInstance enqueues the delete then converges on a 404. Confirm-gated by
+// deleteInstance enqueues the delete then converges on a 404. A repeated delete
+// answered 409 delete_in_progress counts as accepted (the client absorbs it). Confirm-gated by
 // the framework (DeleteInstanceInput embeds Confirm).
 func deleteInstance(ctx context.Context, cl *client.Client, in DeleteInstanceInput) (DeleteResult, error) {
 	if err := cl.DeleteCSInstance(ctx, in.ID); err != nil {
 		return DeleteResult{}, err
 	}
 	if err := waitForInstanceGone(ctx, cl, in.ID, defaultDeleteTimeout); err != nil {
+		// The panel gave up: the instance still exists. Report its own
+		// sentence (delete_error) and that a new delete starts a new attempt.
+		var failed *client.InstanceDeleteError
+		if errors.As(err, &failed) {
+			return DeleteResult{}, failed
+		}
 		return DeleteResult{}, fmt.Errorf("instance %s was not removed: %w", in.ID, err)
 	}
 	return DeleteResult{ID: in.ID, Deleted: true}, nil
@@ -176,14 +184,21 @@ func registerInstanceTools(s *mcp.Server, deps Deps) {
 	}, listInstances)
 
 	Register(s, deps, Spec{
-		Name:        "user.instance.get",
-		Description: "Get a single Cloud Service instance by its UUID.",
+		Name: "user.instance.get",
+		Description: "Get a single Cloud Service instance by its UUID. While a delete is running the instance " +
+			"shows delete_state \"deleting\"; if the platform gave up it shows delete_state \"failed\" with " +
+			"delete_error (plain sentence), delete_reason and delete_attempts, and the instance keeps running. " +
+			"All four are null for an ordinary instance. A deleted instance answers not found.",
 	}, getInstance)
 
 	Register(s, deps, Spec{
 		Name: "user.instance.delete",
 		Description: "Delete a Cloud Service instance and wait until it is fully removed. DESTRUCTIVE and " +
-			"irreversible: requires \"confirm\": true.",
+			"irreversible: requires \"confirm\": true. The platform accepts the delete first and the host confirms " +
+			"it later, so this waits for the instance to disappear. Calling it again while a delete is running is " +
+			"safe (the platform answers \"delete_in_progress\", treated as accepted). If the platform gives up " +
+			"after its own retries, the instance is marked delete_state \"failed\" with a plain delete_error, keeps " +
+			"running, and this tool fails at once with that text; calling it again starts a new attempt.",
 		Destructive: true,
 	}, deleteInstance)
 }

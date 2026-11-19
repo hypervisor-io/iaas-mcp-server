@@ -120,18 +120,23 @@ func waitForDockerEnabled(ctx context.Context, cl *client.Client, instanceID str
 
 // waitForInstanceGone polls SHOW until it 404s, the convergence signal for an
 // async delete. Mirrors iaas_instance's Delete waiter: an IsNotFound error is
-// "done"; any other error is terminal.
+// "done"; any other error is terminal. An instance whose delete_state is
+// "failed" (the panel gave up after its own retries; the instance still exists
+// and keeps running) is terminal at once with delete_error, not after the timeout.
 func waitForInstanceGone(ctx context.Context, cl *client.Client, instanceID string, timeout time.Duration) error {
 	return waiter.WaitFor(ctx, waiter.Options{
 		Interval: pollInterval(),
 		Timeout:  timeout,
 		Refresh: func() (string, bool, error) {
-			_, err := cl.GetInstance(ctx, instanceID)
+			obj, err := cl.GetInstance(ctx, instanceID)
 			if err != nil {
 				if client.IsNotFound(err) {
 					return "deleted", true, nil
 				}
 				return "", false, err
+			}
+			if failure := client.InstanceDeleteFailure(instanceID, obj); failure != nil {
+				return "failed", false, failure
 			}
 			return "deleting", false, nil
 		},

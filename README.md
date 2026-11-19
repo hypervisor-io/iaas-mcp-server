@@ -140,6 +140,14 @@ Database operation admission: `user.managed_database.backup` supports full (defa
   platform's message with a hint that repeating the same call is safe. No other `409` is
   repeated. A `500` with reason `database_error` is returned with the platform's fixed
   sentence and a hint to try again later.
+- **Instance delete.** `user.instance.delete` waits until the instance answers not found. A
+  repeated delete while one is running (HTTP `409`, reason `delete_in_progress`) counts as
+  accepted. If the platform gives up after its own retries, the instance shows
+  `delete_state` `failed` with `delete_error`, `delete_reason` and `delete_attempts`, keeps
+  running, and the tool fails at once with that text; calling it again starts a new attempt.
+  `user.instance.get` returns the same four fields (null for an ordinary instance). A delete
+  refused with `409` `public_ip_operation_in_flight` (a public address change is still being
+  applied) is returned with the wait the platform named; repeat the call after it.
 - **Failed tasks.** The task tools return `message` and `failure_reason` as the platform
   sends them. `failure_reason` is one of a closed list (`detach_not_confirmed`,
   `disk_target_in_use`, `no_space`, `device_busy`, `permission_denied`, `operation_timeout`,
