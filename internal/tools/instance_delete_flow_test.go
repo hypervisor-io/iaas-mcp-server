@@ -117,3 +117,16 @@ func TestInstanceGet_PassesDeleteStateThrough(t *testing.T) {
 		t.Fatalf("instance = %v", out.Instance)
 	}
 }
+
+func TestInstanceDeploy_RefusedForDeleteState(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /instance/{id}/deploy", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusConflict, map[string]any{"success": false, "reason": "delete_state", "message": "This instance is being deleted."})
+	})
+	cs := connectSession(t, mux)
+	res := callTool(t, cs, "user.instance.deploy", map[string]any{"id": "inst-1", "image_id": "img-1"})
+	msg := resultText(t, res)
+	if !res.IsError || !strings.Contains(msg, "delete_state") || !strings.Contains(msg, "user.instance.delete") {
+		t.Fatalf("error=%v msg=%q", res.IsError, msg)
+	}
+}

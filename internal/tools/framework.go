@@ -235,6 +235,11 @@ func MapError(err error) error {
 		if apiErr.RetryAfter > 0 && (apiErr.Reason == client.ReasonAddressReservationBusy || apiErr.Reason == client.ReasonConcurrentUpdateRetry) {
 			return fmt.Errorf("busy (%s): another request was in progress and the call was retried a few times; nothing was created, changed or deleted, so it is safe to repeat the same call: %w", apiErr.Reason, err)
 		}
+		// A deploy or reinstall of an instance whose delete is running or failed
+		// is refused before any task: nothing changed, deploying cannot help.
+		if apiErr.Reason == client.ReasonDeleteState {
+			return fmt.Errorf("refused (delete_state): this instance is being deleted, or its delete failed, so it cannot be deployed; nothing was changed. Send the delete again (user.instance.delete) to finish or restart it: %w", err)
+		}
 		// A delete refused while a public address change is on its way to the
 		// host clears by itself; the wait is the panel's Retry-After.
 		if apiErr.Reason == client.ReasonPublicIPOperationInFlight {

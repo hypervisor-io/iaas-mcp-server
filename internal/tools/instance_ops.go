@@ -286,7 +286,7 @@ func instanceRescue(ctx context.Context, cl *client.Client, in InstanceRescueInp
 }
 
 func registerInstanceOpsTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "user.instance.deploy", Description: "Deploy (or redeploy) an OS image onto an instance and wait until deployed."}, deployInstanceTool)
+	Register(s, deps, Spec{Name: "user.instance.deploy", Description: "Deploy (or redeploy) an OS image onto an instance and wait until deployed. Refused with 409 delete_state while the instance is being deleted or its delete failed (use user.instance.delete instead)."}, deployInstanceTool)
 	Register(s, deps, Spec{Name: "user.instance.self_deploy", Description: "Rebuild a self-provisioned instance from an image and wait until deployed."}, selfDeployInstance)
 	Register(s, deps, Spec{Name: "user.instance.deploy_images", Description: "List the OS images available to deploy on an instance (grouped by distro)."}, instanceDeployImages)
 
