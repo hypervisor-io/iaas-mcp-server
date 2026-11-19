@@ -105,7 +105,7 @@ func NewTokenSource(cfg Config) TokenSource {
 }
 
 // Busy-refusal budget of every client the server builds. The panel answers
-// HTTP 409 address_reservation_busy or database_busy (Retry-After: 1) when
+// HTTP 409 address_reservation_busy or concurrent_update_retry (Retry-After: 1) when
 // another request is in progress and nothing was changed; the shared client
 // then repeats the call. A tool call is interactive, so the budget is short:
 // three tries and about six seconds of waiting in all. After that the tool

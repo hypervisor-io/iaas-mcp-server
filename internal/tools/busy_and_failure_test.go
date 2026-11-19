@@ -58,7 +58,7 @@ func busyHandler(reason string, busyFor int32, calls *int32) http.Handler {
 // One busy answer is waited out (Retry-After honoured) and the tool succeeds.
 func TestBusyRefusal_OneRetrySucceeds(t *testing.T) {
 	var calls int32
-	cs := connectProductionClientSession(t, busyHandler("database_busy", 1, &calls))
+	cs := connectProductionClientSession(t, busyHandler("concurrent_update_retry", 1, &calls))
 	start := time.Now()
 	res := callTool(t, cs, "user.vpc.delete", map[string]any{"id": "vpc-1", "confirm": true})
 	if res.IsError {
@@ -72,7 +72,7 @@ func TestBusyRefusal_OneRetrySucceeds(t *testing.T) {
 // A persistent busy answer ends after the short budget (3 tries) with the
 // server's message and a hint that repeating the call is safe.
 func TestBusyRefusal_ShortBudgetThenHint(t *testing.T) {
-	for _, reason := range []string{"address_reservation_busy", "database_busy"} {
+	for _, reason := range []string{"address_reservation_busy", "concurrent_update_retry"} {
 		var calls int32
 		cs := connectProductionClientSession(t, busyHandler(reason, 1000, &calls))
 		start := time.Now()

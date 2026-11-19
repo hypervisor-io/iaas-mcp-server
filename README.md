@@ -133,7 +133,7 @@ Database operation admission: `user.managed_database.backup` supports full (defa
 - **Error mapping.** Platform `401/403` becomes a scope/IP-lock hint, `422` surfaces
   field errors, `404` becomes not-found, `429` is surfaced as retryable.
 - **Busy answers.** When the platform answers HTTP `409` with reason
-  `address_reservation_busy` or `database_busy` ("another request is in progress"; a
+  `address_reservation_busy` or `concurrent_update_retry` ("another request is in progress"; a
   `Retry-After` header names the wait), the server repeats the call up to two more times,
   honouring `Retry-After` (about six seconds in all). The platform guarantees nothing was
   created, changed or deleted on such an answer. If it is still busy, the tool returns the

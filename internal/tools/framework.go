@@ -226,13 +226,13 @@ func MapError(err error) error {
 			return fmt.Errorf("refused (vpc_deleting): the target VPC is being deleted, so nothing was created and retrying will not help; use another VPC: %w", err)
 		}
 		// Another request was in progress (typed, WITH Retry-After: the managed
-		// database backup and restore admission also answers 409 database_busy,
+		// database backup and restore admission answers 409 database_busy, a different refusal,
 		// without that header, and that one is a real conflict that lasts until
 		// the other operation ends, so it gets no hint). The shared
 		// client already repeated the call a few times within a short budget;
 		// the panel guarantees nothing was created, changed or deleted, so the
 		// caller may simply repeat the same call.
-		if apiErr.RetryAfter > 0 && (apiErr.Reason == client.ReasonAddressReservationBusy || apiErr.Reason == client.ReasonDatabaseBusy) {
+		if apiErr.RetryAfter > 0 && (apiErr.Reason == client.ReasonAddressReservationBusy || apiErr.Reason == client.ReasonConcurrentUpdateRetry) {
 			return fmt.Errorf("busy (%s): another request was in progress and the call was retried a few times; nothing was created, changed or deleted, so it is safe to repeat the same call: %w", apiErr.Reason, err)
 		}
 		return err
