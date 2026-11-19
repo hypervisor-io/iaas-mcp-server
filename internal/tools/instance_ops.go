@@ -27,7 +27,7 @@ type InstanceIDInput struct {
 type InstanceDeployInput struct {
 	ID       string   `json:"id" jsonschema:"UUID of the instance"`
 	ImageID  string   `json:"image_id" jsonschema:"UUID of the OS image to deploy"`
-	Hostname string   `json:"hostname,omitempty" jsonschema:"optional hostname"`
+	Hostname string   `json:"hostname,omitempty" jsonschema:"optional hostname, a host name (RFC 1123, no underscore): refused with 422 invalid_hostname otherwise"`
 	Timezone string   `json:"timezone,omitempty" jsonschema:"optional IANA timezone"`
 	SSHKeys  []string `json:"ssh_keys,omitempty" jsonschema:"optional SSH key UUIDs"`
 }
@@ -35,7 +35,7 @@ type InstanceDeployInput struct {
 type InstanceSelfDeployInput struct {
 	ID       string `json:"id" jsonschema:"UUID of the self-provisioned instance"`
 	ImageID  string `json:"image_id" jsonschema:"UUID of the OS image"`
-	Hostname string `json:"hostname" jsonschema:"hostname for the rebuilt instance"`
+	Hostname string `json:"hostname" jsonschema:"hostname for the rebuilt instance, a host name (RFC 1123, no underscore): refused with 422 invalid_hostname otherwise"`
 }
 
 type CreateInstanceBackupInput struct {

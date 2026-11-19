@@ -148,6 +148,18 @@ Database operation admission: `user.managed_database.backup` supports full (defa
   `user.instance.get` returns the same four fields (null for an ordinary instance). A delete
   refused with `409` `public_ip_operation_in_flight` (a public address change is still being
   applied) is returned with the wait the platform named; repeat the call after it.
+- **Hostname and user data.** The platform checks an instance `hostname` as a host name
+  (RFC 1123: letters, digits and hyphens, dots between parts, each part 1-63 characters
+  without a hyphen at either end, 253 in all; upper case and a single part are fine, an
+  underscore is not) wherever it is accepted, and a changed value only (the stored one is
+  always accepted). A refusal is `422` with reason `invalid_hostname` and the sentence under
+  `hostname`. `cloudcfg` (and a scaling group's `cloud_init`) is checked when submitted: it
+  must be cloud-init YAML, not a script, with the list keys as lists; a refusal is `422` with
+  reason `invalid_cloud_config` and the key or line named. When `user.instance.create` gets
+  that second refusal the instance record already exists: the error names its id, fix the
+  input and call `user.instance.deploy`, or delete it. A deploy task that still fails with
+  `failure_reason` `invalid_cloud_config` carries the same message. An SSH key that is not an
+  OpenSSH public key is `422` with `public_key` named.
 - **Failed tasks.** The task tools return `message` and `failure_reason` as the platform
   sends them. `failure_reason` is one of a closed list (`detach_not_confirmed`,
   `disk_target_in_use`, `no_space`, `device_busy`, `permission_denied`, `operation_timeout`,

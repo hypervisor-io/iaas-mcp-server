@@ -32,7 +32,7 @@ type CreateAutoscalingGroupInput struct {
 	LBBackendID       string   `json:"lb_backend_id,omitempty" jsonschema:"optional LB backend UUID (with load_balancer_id)"`
 	MinInstances      *int     `json:"min_instances,omitempty" jsonschema:"minimum instance count"`
 	MaxInstances      *int     `json:"max_instances,omitempty" jsonschema:"maximum instance count"`
-	CloudInit         string   `json:"cloud_init,omitempty" jsonschema:"optional cloud-init user data"`
+	CloudInit         string   `json:"cloud_init,omitempty" jsonschema:"optional cloud-init user data: YAML, not a script (a first line #! is refused); runcmd, bootcmd, write_files, packages, users and ssh_authorized_keys must be lists; checked when submitted, a wrong document is refused with 422 and the message names the key or line"`
 	SSHKeys           []string `json:"ssh_keys,omitempty" jsonschema:"SSH key UUIDs"`
 	UserScripts       []string `json:"user_scripts,omitempty" jsonschema:"UUIDs of your saved user scripts, run via cloud-init on every new instance (ids not found or not owned by the account are refused)"`
 	SecurityGroupIDs  []string `json:"security_group_ids,omitempty" jsonschema:"security group UUIDs"`

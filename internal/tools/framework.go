@@ -251,6 +251,14 @@ func MapError(err error) error {
 		}
 		return err
 	case 422:
+		// The panel checks an instance hostname (RFC 1123) and the cloud-init user data when they are
+		// submitted; the field message (errors.hostname, errors.cloudcfg) is in err.
+		switch apiErr.Reason {
+		case client.ReasonInvalidHostname:
+			return fmt.Errorf("validation failed (invalid_hostname): the hostname must be a host name: letters, digits and hyphens, dots between parts, each part 1-63 characters without a hyphen at either end, 253 characters in all; an underscore or other character is refused. Nothing was deployed; correct it and repeat the call: %w", err)
+		case client.ReasonInvalidCloudConfig:
+			return fmt.Errorf("validation failed (invalid_cloud_config): cloudcfg must be cloud-init YAML (for example starting with #cloud-config), not a script; runcmd, bootcmd, write_files, packages, users and ssh_authorized_keys must be lists. The message names the key or line. Correct it and repeat the call: %w", err)
+		}
 		return fmt.Errorf("validation failed: %w", err)
 	case 500:
 		// A database failure never carries SQL text: a fixed sentence and the

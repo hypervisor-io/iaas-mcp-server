@@ -24,7 +24,7 @@ func init() {
 type UpdateInstanceInput struct {
 	ID          string  `json:"id" jsonschema:"UUID of the instance"`
 	DisplayName *string `json:"display_name,omitempty" jsonschema:"new display name"`
-	Hostname    *string `json:"hostname,omitempty" jsonschema:"new hostname"`
+	Hostname    *string `json:"hostname,omitempty" jsonschema:"new hostname, a host name (RFC 1123: letters, digits, hyphens and dots, no underscore); a changed value is checked, the stored value is always accepted"`
 	Notes       *string `json:"notes,omitempty" jsonschema:"new notes"`
 	Boot        *string `json:"boot,omitempty" jsonschema:"boot device order"`
 }
@@ -234,7 +234,7 @@ func deleteVPC(ctx context.Context, cl *client.Client, in DeleteVPCInput) (Delet
 }
 
 func registerParityUpdateTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "user.instance.update", Description: "Update an instance's metadata (display name, hostname, notes, boot order)."}, updateInstance)
+	Register(s, deps, Spec{Name: "user.instance.update", Description: "Update an instance's metadata (display name, hostname, notes, boot order). A hostname that is not a host name is refused with 422 invalid_hostname."}, updateInstance)
 	Register(s, deps, Spec{Name: "user.ip_set.update", Description: "Update an IP set's name, description, or ip_version."}, updateIPSet)
 	Register(s, deps, Spec{Name: "user.security_group.update", Description: "Update a security group's name or description."}, updateSecurityGroup)
 	Register(s, deps, Spec{Name: "user.kubernetes_cluster.update", Description: "Update a Kubernetes cluster's name, description, or project."}, updateKubernetesCluster)

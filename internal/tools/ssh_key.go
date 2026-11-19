@@ -93,7 +93,7 @@ func deleteSSHKey(ctx context.Context, cl *client.Client, in DeleteSSHKeyInput) 
 }
 
 func registerSSHKeyTools(s *mcp.Server, deps Deps) {
-	Register(s, deps, Spec{Name: "user.ssh_key.create", Description: "Register an SSH public key."}, createSSHKey)
+	Register(s, deps, Spec{Name: "user.ssh_key.create", Description: "Register an SSH public key. A value that is not an OpenSSH public key is refused with 422 and the message names public_key."}, createSSHKey)
 	Register(s, deps, Spec{Name: "user.ssh_key.list", Description: "List all SSH keys owned by the caller."}, listSSHKeys)
 	Register(s, deps, Spec{Name: "user.ssh_key.get", Description: "Get an SSH key by UUID."}, getSSHKey)
 	Register(s, deps, Spec{Name: "user.ssh_key.update", Description: "Update an SSH key's name or comments."}, updateSSHKey)

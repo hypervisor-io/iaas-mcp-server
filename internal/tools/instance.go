@@ -28,10 +28,10 @@ type CreateInstanceInput struct {
 	ImageID     string   `json:"image_id" jsonschema:"UUID of the OS image to deploy"`
 	VPCID       string   `json:"vpc_id,omitempty" jsonschema:"optional UUID of a VPC to attach at create time"`
 	VPCSubnetID string   `json:"vpc_subnet_id,omitempty" jsonschema:"optional UUID of a VPC subnet (required with vpc_id)"`
-	Hostname    string   `json:"hostname,omitempty" jsonschema:"optional hostname for the instance"`
+	Hostname    string   `json:"hostname,omitempty" jsonschema:"optional hostname, a host name (RFC 1123): letters, digits and hyphens, dots between parts, each part 1-63 characters without a hyphen at either end, 253 in all; an underscore or other character is refused with 422 invalid_hostname"`
 	SSHKeys     []string `json:"ssh_keys,omitempty" jsonschema:"optional list of SSH key UUIDs to install"`
 	Timezone    string   `json:"timezone,omitempty" jsonschema:"optional IANA timezone, e.g. Europe/London"`
-	Cloudcfg    string   `json:"cloudcfg,omitempty" jsonschema:"optional cloud-init user-data (YAML or JSON)"`
+	Cloudcfg    string   `json:"cloudcfg,omitempty" jsonschema:"optional cloud-init user-data (YAML or JSON), for example starting with #cloud-config; not a script. runcmd, bootcmd, write_files, packages, users and ssh_authorized_keys must be lists. A wrong document is refused with 422 invalid_cloud_config naming the key or line"`
 }
 
 // GetInstanceInput identifies one instance.
@@ -113,7 +113,8 @@ func createInstance(ctx context.Context, cl *client.Client, in CreateInstanceInp
 
 	deployResp, err := cl.DeployInstance(ctx, id, phase2)
 	if err != nil {
-		return InstanceResult{}, err
+		// The record exists but was not deployed (for example a hostname or cloudcfg the panel refused with 422).
+		return InstanceResult{}, fmt.Errorf("instance %s was recorded but not deployed (fix the input and call user.instance.deploy with this id, or delete it): %w", id, err)
 	}
 	taskID, _ := deployResp["task_id"].(string)
 	if taskID == "" {
@@ -175,7 +176,10 @@ func registerInstanceTools(s *mcp.Server, deps Deps) {
 	Register(s, deps, Spec{
 		Name: "user.instance.create",
 		Description: "Create and deploy a Cloud Service instance (VM). Records the instance, deploys the " +
-			"OS image, and waits until the deploy task completes; returns the deployed instance.",
+			"OS image, and waits until the deploy task completes; returns the deployed instance. The hostname and cloudcfg " +
+			"are checked by the platform: a hostname that is not a host name (RFC 1123, no underscore) is refused with 422 " +
+			"invalid_hostname before anything is created; a wrong cloudcfg is refused with 422 invalid_cloud_config after the " +
+			"instance record was created (the error names its id: fix the input and call user.instance.deploy, or delete it).",
 	}, createInstance)
 
 	Register(s, deps, Spec{
